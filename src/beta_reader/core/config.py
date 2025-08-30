@@ -14,6 +14,7 @@ class ModelSpecificConfig(BaseModel):
     temperature: float | None = Field(default=None, description="Temperature for randomness (0.0-1.0)")
     top_p: float | None = Field(default=None, description="Nucleus sampling parameter")
     top_k: int | None = Field(default=None, description="Top-k sampling parameter")
+    repeat_penalty: float | None = Field(default=None, description="Penalty for repeated tokens")
     system_prompt_override: str | None = Field(default=None, description="Override system prompt for this model")
 
 

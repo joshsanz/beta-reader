@@ -79,6 +79,35 @@ def config_show() -> None:
 
         console.print(table)
 
+        # Show model-specific configuration for default model if it exists
+        default_model = config.ollama.default_model
+        model_config = config.get_model_config(default_model)
+        
+        # Check if there are any non-None values in the model config
+        model_settings = {
+            "Timeout": f"{model_config.timeout}s" if model_config.timeout is not None else None,
+            "Max Tokens": str(model_config.max_tokens) if model_config.max_tokens is not None else None,
+            "Temperature": str(model_config.temperature) if model_config.temperature is not None else None,
+            "Top P": str(model_config.top_p) if model_config.top_p is not None else None,
+            "Top K": str(model_config.top_k) if model_config.top_k is not None else None,
+            "Repeat Penalty": str(model_config.repeat_penalty) if model_config.repeat_penalty is not None else None,
+            "System Prompt Override": "Yes" if model_config.system_prompt_override else None,
+        }
+        
+        # Filter out None values
+        active_settings = {k: v for k, v in model_settings.items() if v is not None}
+        
+        if active_settings:
+            console.print(f"\n[bold blue]Model-Specific Settings for {default_model}:[/bold blue]")
+            model_table = Table()
+            model_table.add_column("Setting", style="cyan")
+            model_table.add_column("Value", style="white")
+            
+            for setting, value in active_settings.items():
+                model_table.add_row(setting, value)
+            
+            console.print(model_table)
+
     except BetaReaderError as e:
         print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)

@@ -9,25 +9,25 @@ ollama:
       timeout: 60
       top_p: 0.95
       top_k: 64
-      repeat_penalty: 0
+      repeat_penalty: -0.5
     "qwen3:30b-a3b-instruct-2507-q4_K_M":
       temperature: 0.05
       timeout: 60
       top_p: 0.80
       top_k: 20
-      repeat_penalty: 0
+      repeat_penalty: -0.5
     "qwen3:8b":
       temperature: 0.05
       timeout: 60
       top_p: 0.95
       top_k: 20
-      repeat_penalty: 0
+      repeat_penalty: -0.5
     "mistral-nemo:12b-instruct-2407-q4_K_M":
       temperature: 0.05
       timeout: 60
       top_p: 0.95
       top_k: 32
-      repeat_penalty: 0
+      repeat_penalty: -0.5
 
 output:
   default_format: "text"

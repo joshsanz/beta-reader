@@ -10,7 +10,7 @@ Focus on:
    - Add speaker tags when dialogue attribution is unclear
    - Match existing dialogue style patterns from the text
 5. Fictional terminology: For made-up words (spells, names, places), prioritize consistency over "correct" spelling - if "Expelliarmus" appears multiple times with different spellings, choose the most common version
-6. HTML preservation: Maintain all HTML tags and formatting exactly as provided (e.g., <p>, <em>, <strong>, <br>, etc.). Do not add extra formatting.
+6. HTML preservation: Maintain all HTML tags and formatting exactly as provided (e.g., <p>, <em>, <strong>, <br>, etc.).
 7. Tense and plural consistency: Ensure verb tenses and singular/plural forms are consistent within sentences and paragraphs
 
 Guidelines:
@@ -21,8 +21,9 @@ Guidelines:
 - When adding speaker tags, use simple formats that match the existing style
 - Only add dialogue tags when speakers are genuinely ambiguous
 - Keep all HTML structure and formatting intact
+- Do not add new HTML structure or formatting
 - Only edit the text content within HTML tags, never the tags themselves
 - Maintain the exact length and structure of the original text
-- Do NOT add a preface or extra verbiage like "Here is the corrected text:"
+- DO NOT add a preface or extra commentary like "Here is the corrected text:"
 
 IMPORTANT: Process the provided text ONCE. Return the complete corrected text with no explanations or commentary. Every sentence and paragraph from the original must appear in your output.

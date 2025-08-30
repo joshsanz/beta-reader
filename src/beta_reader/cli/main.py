@@ -72,6 +72,8 @@ def config_show() -> None:
         table.add_row("Default Output Format", config.output.default_format)
         table.add_row("Streaming", "Yes" if config.output.streaming else "No")
         table.add_row("Default Diff Format", config.diff.default_format)
+        table.add_row("Chunk Target Size", f"{config.chunking.target_word_count} words")
+        table.add_row("Chunk Max Size", f"{config.chunking.max_word_count} words")
 
         # Add system prompt path
         system_prompt_path = config.get_system_prompt_path()
@@ -153,6 +155,7 @@ def process(
     chapter: int | None = typer.Option(None, "--chapter", "-c", help="Process specific chapter (epub only)"),
     batch: bool = typer.Option(False, "--batch", "-b", help="Process all chapters (epub only)"),
     resume: str | None = typer.Option(None, "--resume", help="Resume interrupted batch by batch ID"),
+    debug_chunking: bool = typer.Option(False, "--debug-chunking", help="Show debug info about chunk boundaries"),
 ) -> None:
     """Process a text or epub file for beta reading."""
     try:
@@ -178,6 +181,10 @@ def process(
             print(f"[red]Error: Unsupported file type: {input_file.suffix}[/red]")
             print("[dim]Currently supported: .txt, .epub[/dim]")
             raise typer.Exit(1)
+        
+        # Set debug chunking flag
+        if processor:
+            processor._debug_chunking = debug_chunking
 
         # Validate model if specified
         if model and not client.model_exists(model):

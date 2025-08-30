@@ -10,6 +10,7 @@ from rich.console import Console
 from rich.progress import Progress
 
 from ..core.batch_state import BatchStateManager
+from ..core.text_chunker import TextChunker, TextChunk
 from ..llm.exceptions import FileProcessingError
 from .base import BaseProcessor
 
@@ -23,6 +24,11 @@ class EpubProcessor(BaseProcessor):
         self.console = Console()
         self._system_prompt = self._load_system_prompt()
         self.batch_manager = BatchStateManager()
+        # Initialize chunker with config values
+        self.chunker = TextChunker(
+            target_word_count=self.config.chunking.target_word_count,
+            max_word_count=self.config.chunking.max_word_count
+        )
 
     def can_process(self, file_path: Path) -> bool:
         """Check if this processor can handle epub files.
@@ -512,6 +518,22 @@ class EpubProcessor(BaseProcessor):
         chapter_title: str = "Chapter"
     ) -> str:
         """Process content with streaming output to terminal."""
+        # Check if content needs chunking
+        word_count = len(content.split())
+        debug_chunking = getattr(self, '_debug_chunking', False)
+        if word_count <= self.chunker.target_word_count:
+            return self._process_single_chunk_streaming(content, model, output_path, chapter_title)
+        else:
+            return self._process_chunked_content_streaming(content, model, output_path, chapter_title, debug_chunking)
+    
+    def _process_single_chunk_streaming(
+        self,
+        content: str,
+        model: str,
+        output_path: Path | None = None,
+        chapter_title: str = "Chapter"
+    ) -> str:
+        """Process content as a single chunk with streaming."""
         if output_path:
             self.console.print(f"[dim]Streaming output for {chapter_title}...[/dim]")
         else:
@@ -547,6 +569,81 @@ class EpubProcessor(BaseProcessor):
         except KeyboardInterrupt:
             self.console.print(f"\n[yellow]Processing interrupted for {chapter_title}[/yellow]")
             raise FileProcessingError(f"Processing interrupted for {chapter_title}")
+    
+    def _process_chunked_content_streaming(
+        self,
+        content: str,
+        model: str,
+        output_path: Path | None = None,
+        chapter_title: str = "Chapter",
+        debug_chunking: bool = False
+    ) -> str:
+        """Process content in chunks with streaming."""
+        chunks = self.chunker.chunk_text(content)
+        
+        if not chunks:
+            return content
+        
+        self.console.print(f"[blue]Chunking {chapter_title}: {len(chunks)} chunks ({len(content.split())} words)[/blue]")
+        
+        # Show debug information about chunk boundaries
+        if debug_chunking:
+            self.console.print(f"\n[yellow]Chunk Boundaries Debug Information for {chapter_title}:[/yellow]")
+            boundaries = self.chunker.get_chunk_boundaries_debug(content)
+            for boundary in boundaries:
+                self.console.print(f"[dim]{boundary}[/dim]")
+            self.console.print()
+        
+        processed_chunks = []
+        
+        try:
+            for i, chunk in enumerate(chunks, 1):
+                chunk_title = f"{chapter_title} (chunk {chunk.chunk_number}/{chunk.total_chunks})"
+                
+                if output_path:
+                    self.console.print(f"[dim]Processing chunk {i}/{len(chunks)}...[/dim]")
+                else:
+                    self.console.print(f"[dim]Processing chunk {i}/{len(chunks)}...[/dim]\n")
+                
+                result_parts = []
+                for stream_chunk in self.client.generate_stream(
+                    model=model,
+                    prompt=chunk.content,
+                    system_prompt=self._system_prompt,
+                ):
+                    result_parts.append(stream_chunk)
+                    if not output_path:  # Only stream to console if not saving to file
+                        from rich.text import Text
+                        text = Text(stream_chunk, style="green")
+                        self.console.print(text, end="")
+                        import sys
+                        sys.stdout.flush()
+                
+                if not output_path:
+                    self.console.print("\n")
+                
+                chunk_result = "".join(result_parts)
+                processed_chunks.append(TextChunk(
+                    content=chunk_result,
+                    chunk_number=chunk.chunk_number,
+                    total_chunks=chunk.total_chunks,
+                    word_count=len(chunk_result.split()),
+                    start_position=chunk.start_position,
+                    end_position=chunk.end_position
+                ))
+            
+            # Reassemble the processed chunks
+            result = self.chunker.reassemble_chunks(processed_chunks)
+            
+            if output_path:
+                self._write_file_content(output_path, result)
+                self.console.print(f"[bold green]Chapter saved to:[/bold green] {output_path}")
+            
+            return result
+        
+        except KeyboardInterrupt:
+            self.console.print(f"\n[yellow]Processing interrupted for {chapter_title}[/yellow]")
+            raise FileProcessingError(f"Processing interrupted for {chapter_title}")
 
     def _process_without_streaming(
         self,
@@ -556,6 +653,22 @@ class EpubProcessor(BaseProcessor):
         chapter_title: str = "Chapter"
     ) -> str:
         """Process content without streaming."""
+        # Check if content needs chunking
+        word_count = len(content.split())
+        debug_chunking = getattr(self, '_debug_chunking', False)
+        if word_count <= self.chunker.target_word_count:
+            return self._process_single_chunk_no_streaming(content, model, output_path, chapter_title)
+        else:
+            return self._process_chunked_content_no_streaming(content, model, output_path, chapter_title, debug_chunking)
+    
+    def _process_single_chunk_no_streaming(
+        self,
+        content: str,
+        model: str,
+        output_path: Path | None = None,
+        chapter_title: str = "Chapter"
+    ) -> str:
+        """Process content as a single chunk without streaming."""
         with self.console.status(f"[dim]Processing {chapter_title}...[/dim]"):
             result = self.client.generate(
                 model=model,
@@ -568,6 +681,70 @@ class EpubProcessor(BaseProcessor):
             self.console.print(f"[bold green]Chapter saved to:[/bold green] {output_path}")
 
         return result
+    
+    def _process_chunked_content_no_streaming(
+        self,
+        content: str,
+        model: str,
+        output_path: Path | None = None,
+        chapter_title: str = "Chapter",
+        debug_chunking: bool = False
+    ) -> str:
+        """Process content in chunks without streaming."""
+        chunks = self.chunker.chunk_text(content)
+        
+        if not chunks:
+            return content
+        
+        self.console.print(f"[blue]Chunking {chapter_title}: {len(chunks)} chunks ({len(content.split())} words)[/blue]")
+        
+        # Show debug information about chunk boundaries
+        if debug_chunking:
+            self.console.print(f"\n[yellow]Chunk Boundaries Debug Information for {chapter_title}:[/yellow]")
+            boundaries = self.chunker.get_chunk_boundaries_debug(content)
+            for boundary in boundaries:
+                self.console.print(f"[dim]{boundary}[/dim]")
+            self.console.print()
+        
+        processed_chunks = []
+        
+        try:
+            with Progress() as progress:
+                task = progress.add_task(f"Processing {chapter_title}", total=len(chunks))
+                
+                for chunk in chunks:
+                    chunk_title = f"{chapter_title} (chunk {chunk.chunk_number}/{chunk.total_chunks})"
+                    progress.update(task, description=f"Processing chunk {chunk.chunk_number}/{chunk.total_chunks}")
+                    
+                    chunk_result = self.client.generate(
+                        model=model,
+                        prompt=chunk.content,
+                        system_prompt=self._system_prompt,
+                    )
+                    
+                    processed_chunks.append(TextChunk(
+                        content=chunk_result,
+                        chunk_number=chunk.chunk_number,
+                        total_chunks=chunk.total_chunks,
+                        word_count=len(chunk_result.split()),
+                        start_position=chunk.start_position,
+                        end_position=chunk.end_position
+                    ))
+                    
+                    progress.advance(task)
+            
+            # Reassemble the processed chunks
+            result = self.chunker.reassemble_chunks(processed_chunks)
+            
+            if output_path:
+                self._write_file_content(output_path, result)
+                self.console.print(f"[bold green]Chapter saved to:[/bold green] {output_path}")
+            
+            return result
+        
+        except KeyboardInterrupt:
+            self.console.print(f"\n[yellow]Processing interrupted for {chapter_title}[/yellow]")
+            raise FileProcessingError(f"Processing interrupted for {chapter_title}")
 
     def _load_system_prompt(self) -> str:
         """Load the system prompt for beta reading."""

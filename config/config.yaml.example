@@ -5,7 +5,7 @@ ollama:
   base_url: "http://localhost:11434"
   default_model: "llama3.1:8b"
   timeout: 60
-  
+
   # Model-specific configurations
   model_configs:
     # Fast model for quick testing - higher temperature for creativity
@@ -14,13 +14,13 @@ ollama:
       timeout: 30
       top_p: 0.8
       top_k: 40
-    
+
     # Large model for thorough editing - very low temperature for consistency
     "llama3.1:70b":
       temperature: 0.05
       timeout: 180
       top_p: 0.95
-    
+
     # Code-focused model with custom system prompt
     "codellama:7b":
       temperature: 0.1
@@ -32,7 +32,7 @@ ollama:
         2. Code formatting and syntax
         3. Technical terminology
         4. Grammar and style while preserving technical meaning
-    
+
     # Creative model for fiction
     "mistral:7b":
       temperature: 0.2
@@ -45,3 +45,7 @@ output:
 
 diff:
   default_format: "unified"
+
+chunking:
+  target_word_count: 500  # Target words per chunk (50-2000)
+  max_word_count: 750     # Maximum words before forced split (100-3000)

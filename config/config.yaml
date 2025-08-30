@@ -5,29 +5,29 @@ ollama:
   # Model-specific configurations
   model_configs:
     "gemma3:12b-it-qat":
-      temperature: 0.6
+      temperature: 0.05
       timeout: 60
       top_p: 0.95
       top_k: 64
-      repeat_penalty: 0.05
+      repeat_penalty: 0
     "qwen3:30b-a3b-instruct-2507-q4_K_M":
-      temperature: 0.5
+      temperature: 0.05
       timeout: 60
       top_p: 0.80
       top_k: 20
-      repeat_penalty: 0.05
+      repeat_penalty: 0
     "qwen3:8b":
-      temperature: 0.4
+      temperature: 0.05
       timeout: 60
       top_p: 0.95
       top_k: 20
-      repeat_penalty: 0.05
+      repeat_penalty: 0
     "mistral-nemo:12b-instruct-2407-q4_K_M":
-      temperature: 0.5
+      temperature: 0.05
       timeout: 60
       top_p: 0.95
       top_k: 32
-      repeat_penalty: 0.05
+      repeat_penalty: 0
 
 output:
   default_format: "text"
@@ -35,3 +35,7 @@ output:
 
 diff:
   default_format: "unified"  # or "split"
+
+chunking:
+  target_word_count: 500  # Target words per chunk (50-2000)
+  max_word_count: 750     # Maximum words before forced split (100-3000)

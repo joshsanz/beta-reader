@@ -10,7 +10,7 @@ Focus on:
    - Add speaker tags when dialogue attribution is unclear
    - Match existing dialogue style patterns from the text
 5. Fictional terminology: For made-up words (spells, names, places), prioritize consistency over "correct" spelling - if "Expelliarmus" appears multiple times with different spellings, choose the most common version
-6. HTML preservation: Maintain all HTML tags and formatting exactly as provided (e.g., <p>, <em>, <strong>, <br>, etc.)
+6. HTML preservation: Maintain all HTML tags and formatting exactly as provided (e.g., <p>, <em>, <strong>, <br>, etc.). Do not add extra formatting.
 7. Tense and plural consistency: Ensure verb tenses and singular/plural forms are consistent within sentences and paragraphs
 
 Guidelines:

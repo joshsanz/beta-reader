@@ -51,12 +51,45 @@ class DiffConfig(BaseModel):
         return v
 
 
+class ChunkingConfig(BaseModel):
+    """Text chunking configuration."""
+
+    target_word_count: int = Field(default=500, description="Target number of words per chunk")
+    max_word_count: int = Field(default=750, description="Maximum words per chunk before forced split")
+
+    @field_validator("target_word_count")
+    @classmethod
+    def validate_target_word_count(cls, v: int) -> int:
+        """Validate target word count."""
+        if v < 50:
+            raise ValueError("target_word_count must be at least 50")
+        if v > 2000:
+            raise ValueError("target_word_count must be at most 2000")
+        return v
+
+    @field_validator("max_word_count")
+    @classmethod
+    def validate_max_word_count(cls, v: int) -> int:
+        """Validate max word count."""
+        if v < 100:
+            raise ValueError("max_word_count must be at least 100")
+        if v > 3000:
+            raise ValueError("max_word_count must be at most 3000")
+        return v
+
+    def model_post_init(self, __context) -> None:
+        """Validate that max_word_count >= target_word_count."""
+        if self.max_word_count < self.target_word_count:
+            raise ValueError("max_word_count must be greater than or equal to target_word_count")
+
+
 class Config(BaseModel):
     """Main application configuration."""
 
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
     diff: DiffConfig = Field(default_factory=DiffConfig)
+    chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
 
     @classmethod
     def load_from_file(cls, config_path: Path | None = None) -> "Config":

@@ -143,7 +143,7 @@ class Config(BaseModel):
 
         with open(config_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(
-                self.dict(),
+                self.model_dump(),
                 f,
                 default_flow_style=False,
                 indent=2,

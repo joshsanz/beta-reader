@@ -8,7 +8,7 @@ from rich.console import Console
 from rich.progress import Progress
 from rich.text import Text
 
-from ..core.text_chunker import TextChunker, TextChunk
+from ..core.text_chunker import TextChunk, TextChunker
 from ..llm.exceptions import FileProcessingError
 from .base import BaseProcessor
 
@@ -134,7 +134,7 @@ class TextProcessor(BaseProcessor):
             Complete processed text.
         """
         self.console.print(f"\n[bold blue]Processing with model:[/bold blue] {model}")
-        
+
         # Check if content needs chunking
         word_count = len(content.split())
         debug_chunking = getattr(self, '_debug_chunking', False)
@@ -142,7 +142,7 @@ class TextProcessor(BaseProcessor):
             return self._process_single_chunk_streaming(content, model, output_path)
         else:
             return self._process_chunked_content_streaming(content, model, output_path, debug_chunking)
-    
+
     def _process_single_chunk_streaming(
         self,
         content: str,
@@ -179,7 +179,7 @@ class TextProcessor(BaseProcessor):
         except KeyboardInterrupt:
             self.console.print("\n[yellow]Processing interrupted by user[/yellow]")
             raise FileProcessingError("Processing interrupted by user")
-    
+
     def _process_chunked_content_streaming(
         self,
         content: str,
@@ -189,12 +189,12 @@ class TextProcessor(BaseProcessor):
     ) -> str:
         """Process content in chunks with streaming."""
         chunks = self.chunker.chunk_text(content)
-        
+
         if not chunks:
             return content
-        
+
         self.console.print(f"[blue]Chunking text: {len(chunks)} chunks ({len(content.split())} words)[/blue]")
-        
+
         # Show debug information about chunk boundaries
         if debug_chunking:
             self.console.print("\n[yellow]Chunk Boundaries Debug Information:[/yellow]")
@@ -202,13 +202,13 @@ class TextProcessor(BaseProcessor):
             for boundary in boundaries:
                 self.console.print(f"[dim]{boundary}[/dim]")
             self.console.print()
-        
+
         processed_chunks = []
-        
+
         try:
             for i, chunk in enumerate(chunks, 1):
                 self.console.print(f"\n[dim]Processing chunk {i}/{len(chunks)}...[/dim]\n")
-                
+
                 result_parts = []
                 for stream_chunk in self.client.generate_stream(
                     model=model,
@@ -219,9 +219,9 @@ class TextProcessor(BaseProcessor):
                     text = Text(stream_chunk, style="green")
                     self.console.print(text, end="")
                     sys.stdout.flush()
-                
+
                 self.console.print("\n")  # Add final newline after chunk
-                
+
                 chunk_result = "".join(result_parts)
                 processed_chunks.append(TextChunk(
                     content=chunk_result,
@@ -231,16 +231,16 @@ class TextProcessor(BaseProcessor):
                     start_position=chunk.start_position,
                     end_position=chunk.end_position
                 ))
-            
+
             # Reassemble the processed chunks
             result = self.chunker.reassemble_chunks(processed_chunks)
-            
+
             if output_path:
                 self._write_file_content(output_path, result)
                 self.console.print(f"\n[bold green]Output saved to:[/bold green] {output_path}")
-            
+
             return result
-        
+
         except KeyboardInterrupt:
             self.console.print("\n[yellow]Processing interrupted by user[/yellow]")
             raise FileProcessingError("Processing interrupted by user")
@@ -262,7 +262,7 @@ class TextProcessor(BaseProcessor):
             Complete processed text.
         """
         self.console.print(f"[bold blue]Processing with model:[/bold blue] {model}")
-        
+
         # Check if content needs chunking
         word_count = len(content.split())
         debug_chunking = getattr(self, '_debug_chunking', False)
@@ -270,7 +270,7 @@ class TextProcessor(BaseProcessor):
             return self._process_single_chunk_no_streaming(content, model, output_path)
         else:
             return self._process_chunked_content_no_streaming(content, model, output_path, debug_chunking)
-    
+
     def _process_single_chunk_no_streaming(
         self,
         content: str,
@@ -290,7 +290,7 @@ class TextProcessor(BaseProcessor):
             self.console.print(f"[bold green]Output saved to:[/bold green] {output_path}")
 
         return result
-    
+
     def _process_chunked_content_no_streaming(
         self,
         content: str,
@@ -300,12 +300,12 @@ class TextProcessor(BaseProcessor):
     ) -> str:
         """Process content in chunks without streaming."""
         chunks = self.chunker.chunk_text(content)
-        
+
         if not chunks:
             return content
-        
+
         self.console.print(f"[blue]Chunking text: {len(chunks)} chunks ({len(content.split())} words)[/blue]")
-        
+
         # Show debug information about chunk boundaries
         if debug_chunking:
             self.console.print("\n[yellow]Chunk Boundaries Debug Information:[/yellow]")
@@ -313,22 +313,22 @@ class TextProcessor(BaseProcessor):
             for boundary in boundaries:
                 self.console.print(f"[dim]{boundary}[/dim]")
             self.console.print()
-        
+
         processed_chunks = []
-        
+
         try:
             with Progress() as progress:
                 task = progress.add_task("Processing text", total=len(chunks))
-                
+
                 for chunk in chunks:
                     progress.update(task, description=f"Processing chunk {chunk.chunk_number}/{chunk.total_chunks}")
-                    
+
                     chunk_result = self.client.generate(
                         model=model,
                         prompt=chunk.content,
                         system_prompt=self._system_prompt,
                     )
-                    
+
                     processed_chunks.append(TextChunk(
                         content=chunk_result,
                         chunk_number=chunk.chunk_number,
@@ -337,18 +337,18 @@ class TextProcessor(BaseProcessor):
                         start_position=chunk.start_position,
                         end_position=chunk.end_position
                     ))
-                    
+
                     progress.advance(task)
-            
+
             # Reassemble the processed chunks
             result = self.chunker.reassemble_chunks(processed_chunks)
-            
+
             if output_path:
                 self._write_file_content(output_path, result)
                 self.console.print(f"[bold green]Output saved to:[/bold green] {output_path}")
-            
+
             return result
-        
+
         except KeyboardInterrupt:
             self.console.print("\n[yellow]Processing interrupted by user[/yellow]")
             raise FileProcessingError("Processing interrupted by user")

@@ -84,7 +84,7 @@ def config_show() -> None:
         # Show model-specific configuration for default model if it exists
         default_model = config.ollama.default_model
         model_config = config.get_model_config(default_model)
-        
+
         # Check if there are any non-None values in the model config
         model_settings = {
             "Timeout": f"{model_config.timeout}s" if model_config.timeout is not None else None,
@@ -95,19 +95,19 @@ def config_show() -> None:
             "Repeat Penalty": str(model_config.repeat_penalty) if model_config.repeat_penalty is not None else None,
             "System Prompt Override": "Yes" if model_config.system_prompt_override else None,
         }
-        
+
         # Filter out None values
         active_settings = {k: v for k, v in model_settings.items() if v is not None}
-        
+
         if active_settings:
             console.print(f"\n[bold blue]Model-Specific Settings for {default_model}:[/bold blue]")
             model_table = Table()
             model_table.add_column("Setting", style="cyan")
             model_table.add_column("Value", style="white")
-            
+
             for setting, value in active_settings.items():
                 model_table.add_row(setting, value)
-            
+
             console.print(model_table)
 
     except BetaReaderError as e:
@@ -154,7 +154,7 @@ def process(
     stream: bool = typer.Option(True, "--stream/--no-stream", help="Stream output"),
     chapter: int | None = typer.Option(None, "--chapter", "-c", help="Process specific chapter (epub only)"),
     batch: bool = typer.Option(False, "--batch", "-b", help="Process all chapters (epub only)"),
-    resume: str | None = typer.Option(None, "--resume", help="Resume interrupted batch by batch ID"),
+    resume: str | None = typer.Option(None, "--resume", help="Resume interrupted batch by hash or batch ID"),
     debug_chunking: bool = typer.Option(False, "--debug-chunking", help="Show debug info about chunk boundaries"),
 ) -> None:
     """Process a text or epub file for beta reading."""
@@ -181,7 +181,7 @@ def process(
             print(f"[red]Error: Unsupported file type: {input_file.suffix}[/red]")
             print("[dim]Currently supported: .txt, .epub[/dim]")
             raise typer.Exit(1)
-        
+
         # Set debug chunking flag
         if processor:
             processor._debug_chunking = debug_chunking
@@ -458,7 +458,7 @@ def batch_list() -> None:
             return
 
         table = Table(title="Batch Processing States")
-        table.add_column("Batch ID", style="cyan")
+        table.add_column("Hash", style="cyan")
         table.add_column("Input File", style="white")
         table.add_column("Model", style="green")
         table.add_column("Status", style="yellow")
@@ -489,7 +489,7 @@ def batch_list() -> None:
                 filename = filename[:27] + "..."
 
             table.add_row(
-                state['batch_id'][:12] + "...",  # Truncate batch ID
+                state['short_hash'],
                 filename,
                 state['model'],
                 status,
@@ -502,7 +502,7 @@ def batch_list() -> None:
         # Show resumable batches
         resumable = batch_manager.get_resumable_batches()
         if resumable:
-            console.print(f"\n[green]{len(resumable)} batch(es) can be resumed with --resume <batch-id>[/green]")
+            console.print(f"\n[green]{len(resumable)} batch(es) can be resumed with --resume <hash>[/green]")
 
     except Exception as e:
         print(f"[red]Error: {e}[/red]")
@@ -534,17 +534,21 @@ def batch_clean(
 
 @app.command(name="batch-status")
 def batch_status(
-    batch_id: str = typer.Argument(..., help="Batch ID to show status for"),
+    batch_id: str = typer.Argument(..., help="Batch ID or short hash to show status for"),
 ) -> None:
     """Show detailed status of a specific batch."""
     try:
         batch_manager = BatchStateManager()
-        state = batch_manager.load_batch_state(batch_id)
+        # Resolve short hash if necessary
+        full_batch_id = batch_manager.resolve_short_hash(batch_id)
+        state = batch_manager.load_batch_state(full_batch_id)
 
         import datetime
 
         # Show batch overview
-        console.print(f"\n[bold blue]Batch Status:[/bold blue] {batch_id}")
+        short_hash = batch_manager.get_short_hash(full_batch_id)
+        console.print(f"\n[bold blue]Batch Status:[/bold blue] {short_hash}")
+        console.print(f"[dim]Full ID:[/dim] {full_batch_id}")
         console.print(f"[dim]Input file:[/dim] {state.input_file}")
         console.print(f"[dim]Model:[/dim] {state.model}")
         console.print(f"[dim]Status:[/dim] {state.status}")

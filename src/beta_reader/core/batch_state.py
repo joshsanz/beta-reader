@@ -1,5 +1,6 @@
 """Batch processing state management for resume functionality."""
 
+import hashlib
 import json
 import time
 from dataclasses import asdict, dataclass
@@ -77,6 +78,66 @@ class BatchStateManager:
         safe_filename = input_file.stem.replace(" ", "_").replace("-", "_")
         safe_model = model.replace(":", "_").replace("/", "_")
         return f"{safe_filename}_{safe_model}_{timestamp}"
+
+    def get_short_hash(self, batch_id: str, length: int = 8) -> str:
+        """Generate a short hash for a batch ID.
+
+        Args:
+            batch_id: Full batch ID.
+            length: Length of short hash.
+
+        Returns:
+            Short hash string.
+        """
+        return hashlib.sha256(batch_id.encode()).hexdigest()[:length]
+
+    def resolve_short_hash(self, short_hash: str) -> str:
+        """Resolve a short hash to a full batch ID.
+
+        Args:
+            short_hash: Short hash to resolve.
+
+        Returns:
+            Full batch ID.
+
+        Raises:
+            FileProcessingError: If hash cannot be resolved or is ambiguous.
+        """
+        # First check if it's already a full batch ID
+        if self._is_full_batch_id(short_hash):
+            return short_hash
+
+        # Find all matching batch IDs
+        matches = []
+        for state_file in self.state_dir.glob("*.json"):
+            try:
+                with open(state_file, encoding='utf-8') as f:
+                    data = json.load(f)
+                batch_id = data['batch_id']
+                if self.get_short_hash(batch_id).startswith(short_hash.lower()):
+                    matches.append(batch_id)
+            except Exception:
+                # Skip corrupted state files
+                continue
+
+        if not matches:
+            raise FileProcessingError(f"No batch found with hash '{short_hash}'")
+        elif len(matches) > 1:
+            raise FileProcessingError(f"Hash '{short_hash}' is ambiguous. Matches: {matches}")
+
+        return matches[0]
+
+    def _is_full_batch_id(self, batch_id: str) -> bool:
+        """Check if string looks like a full batch ID.
+
+        Args:
+            batch_id: String to check.
+
+        Returns:
+            True if it looks like a full batch ID.
+        """
+        # Full batch IDs are long and contain underscores and timestamp
+        return len(batch_id) > 20 and "_" in batch_id and batch_id.split("_")[-1].isdigit()
 
     def create_batch_state(
         self,
@@ -184,6 +245,7 @@ class BatchStateManager:
 
                 states.append({
                     'batch_id': data['batch_id'],
+                    'short_hash': self.get_short_hash(data['batch_id']),
                     'input_file': data['input_file'],
                     'model': data['model'],
                     'status': data['status'],

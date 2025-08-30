@@ -24,15 +24,15 @@ class TextDiffer:
         format: str = "unified"
     ) -> str:
         """Generate diff between two files.
-        
+
         Args:
             original_path: Path to the original file.
             edited_path: Path to the edited file.
             format: Diff format - "unified" or "split".
-            
+
         Returns:
             Diff output as string.
-            
+
         Raises:
             FileProcessingError: If files cannot be read or diff format is invalid.
         """
@@ -70,12 +70,12 @@ class TextDiffer:
         format: str = "unified"
     ) -> None:
         """Display diff with rich formatting.
-        
+
         Args:
             original_path: Path to the original file.
             edited_path: Path to the edited file.
             format: Diff format - "unified" or "split".
-            
+
         Raises:
             FileProcessingError: If files cannot be read or diff format is invalid.
         """
@@ -119,13 +119,13 @@ class TextDiffer:
 
     def _read_file_lines(self, file_path: Path) -> list[str]:
         """Read file content as list of lines.
-        
+
         Args:
             file_path: Path to the file to read.
-            
+
         Returns:
             List of lines from the file.
-            
+
         Raises:
             FileProcessingError: If file cannot be read.
         """
@@ -146,13 +146,13 @@ class TextDiffer:
         edited_name: str
     ) -> str:
         """Generate unified diff format.
-        
+
         Args:
             original_lines: Lines from original file.
             edited_lines: Lines from edited file.
             original_name: Name of original file.
             edited_name: Name of edited file.
-            
+
         Returns:
             Unified diff as string.
         """
@@ -173,13 +173,13 @@ class TextDiffer:
         edited_name: str
     ) -> str:
         """Generate split diff format.
-        
+
         Args:
             original_lines: Lines from original file.
             edited_lines: Lines from edited file.
             original_name: Name of original file.
             edited_name: Name of edited file.
-            
+
         Returns:
             Split diff as string.
         """
@@ -201,7 +201,7 @@ class TextDiffer:
         edited_name: str
     ) -> None:
         """Display unified diff with rich formatting.
-        
+
         Args:
             original_lines: Lines from original file.
             edited_lines: Lines from edited file.
@@ -236,7 +236,7 @@ class TextDiffer:
         edited_name: str
     ) -> None:
         """Display split diff with rich formatting using side-by-side view.
-        
+
         Args:
             original_lines: Lines from original file.
             edited_lines: Lines from edited file.

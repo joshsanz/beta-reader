@@ -1,6 +1,6 @@
 # Beta Reader
 
-A fanfiction beta reader using local LLM via Ollama.
+A creative writing beta reader using local LLM via Ollama.
 
 ## Features
 

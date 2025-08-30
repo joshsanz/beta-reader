@@ -44,10 +44,10 @@ class Config(BaseModel):
     @classmethod
     def load_from_file(cls, config_path: Path | None = None) -> "Config":
         """Load configuration from YAML file.
-        
+
         Args:
             config_path: Path to configuration file. If None, uses default locations.
-            
+
         Returns:
             Config instance.
         """
@@ -65,7 +65,7 @@ class Config(BaseModel):
     @classmethod
     def _find_config_file(cls) -> Path | None:
         """Find configuration file in default locations.
-        
+
         Returns:
             Path to configuration file, or None if not found.
         """
@@ -85,7 +85,7 @@ class Config(BaseModel):
 
     def save_to_file(self, config_path: Path) -> None:
         """Save configuration to YAML file.
-        
+
         Args:
             config_path: Path where to save the configuration.
         """
@@ -102,11 +102,16 @@ class Config(BaseModel):
 
     def get_system_prompt_path(self) -> Path:
         """Get path to system prompt file.
-        
+
         Returns:
             Path to system_prompt.txt file.
         """
-        # Look in current directory first, then in package
+        # Check config directory first (matches processor logic)
+        config_prompt_path = Path.cwd() / "config" / "system_prompt.txt"
+        if config_prompt_path.exists():
+            return config_prompt_path
+
+        # Look in current directory
         current_dir_prompt = Path.cwd() / "system_prompt.txt"
         if current_dir_prompt.exists():
             return current_dir_prompt

@@ -14,7 +14,7 @@ class OllamaClient:
 
     def __init__(self, config: OllamaConfig) -> None:
         """Initialize Ollama client.
-        
+
         Args:
             config: Ollama configuration.
         """
@@ -24,7 +24,7 @@ class OllamaClient:
 
     def check_connection(self) -> bool:
         """Check if Ollama server is accessible.
-        
+
         Returns:
             True if server is accessible, False otherwise.
         """
@@ -36,10 +36,10 @@ class OllamaClient:
 
     def list_models(self) -> list[str]:
         """List available models.
-        
+
         Returns:
             List of available model names.
-            
+
         Raises:
             OllamaConnectionError: If connection to server fails.
         """
@@ -52,10 +52,10 @@ class OllamaClient:
 
     def model_exists(self, model_name: str) -> bool:
         """Check if a model exists.
-        
+
         Args:
             model_name: Name of the model to check.
-            
+
         Returns:
             True if model exists, False otherwise.
         """
@@ -67,10 +67,10 @@ class OllamaClient:
 
     def validate_model(self, model_name: str) -> None:
         """Validate that a model is available.
-        
+
         Args:
             model_name: Name of the model to validate.
-            
+
         Raises:
             OllamaConnectionError: If connection to server fails.
             ModelNotFoundError: If model is not available.
@@ -86,15 +86,15 @@ class OllamaClient:
         system_prompt: str | None = None,
     ) -> str:
         """Generate text using Ollama model (synchronous).
-        
+
         Args:
             model: Model name to use.
             prompt: Input prompt.
             system_prompt: Optional system prompt.
-            
+
         Returns:
             Generated text response.
-            
+
         Raises:
             OllamaConnectionError: If connection fails.
             ModelNotFoundError: If model is not available.
@@ -127,15 +127,15 @@ class OllamaClient:
         system_prompt: str | None = None,
     ) -> Iterator[str]:
         """Generate text using Ollama model with streaming (synchronous).
-        
+
         Args:
             model: Model name to use.
             prompt: Input prompt.
             system_prompt: Optional system prompt.
-            
+
         Yields:
             Chunks of generated text.
-            
+
         Raises:
             OllamaConnectionError: If connection fails.
             ModelNotFoundError: If model is not available.
@@ -172,15 +172,15 @@ class OllamaClient:
         system_prompt: str | None = None,
     ) -> str:
         """Generate text using Ollama model (asynchronous).
-        
+
         Args:
             model: Model name to use.
             prompt: Input prompt.
             system_prompt: Optional system prompt.
-            
+
         Returns:
             Generated text response.
-            
+
         Raises:
             OllamaConnectionError: If connection fails.
             ModelNotFoundError: If model is not available.
@@ -213,15 +213,15 @@ class OllamaClient:
         system_prompt: str | None = None,
     ) -> AsyncGenerator[str, None]:
         """Generate text using Ollama model with streaming (asynchronous).
-        
+
         Args:
             model: Model name to use.
             prompt: Input prompt.
             system_prompt: Optional system prompt.
-            
+
         Yields:
             Chunks of generated text.
-            
+
         Raises:
             OllamaConnectionError: If connection fails.
             ModelNotFoundError: If model is not available.
@@ -254,10 +254,10 @@ class OllamaClient:
 
 def create_client(config: Config | None = None) -> OllamaClient:
     """Create Ollama client with configuration.
-    
+
     Args:
         config: Application configuration. If None, loads from default location.
-        
+
     Returns:
         Configured Ollama client.
     """

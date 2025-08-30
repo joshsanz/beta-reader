@@ -116,64 +116,64 @@ diff:
 - [x] Add `config-show` command
 - [x] Add stub commands for `process` and `diff`
 
-### Phase 2: Text Processing
+### Phase 2: Text Processing ✅ COMPLETED
 
 #### Text File Processing
-- [ ] Create `BaseProcessor` abstract class
-- [ ] Implement `TextProcessor` for plain text files
-- [ ] Integrate with existing system_prompt.txt
-- [ ] Add file reading/writing capabilities
-- [ ] Implement streaming output to terminal
+- [x] Create `BaseProcessor` abstract class
+- [x] Implement `TextProcessor` for plain text files
+- [x] Integrate with existing system_prompt.txt
+- [x] Add file reading/writing capabilities
+- [x] Implement streaming output to terminal
 
 #### CLI Foundation
-- [ ] Set up Typer CLI application
-- [ ] Create `process` command for text files
-- [ ] Add `--model` flag for model selection
-- [ ] Add `--output` flag for file output vs streaming
-- [ ] Implement comprehensive error handling and messages
+- [x] Set up Typer CLI application
+- [x] Create `process` command for text files
+- [x] Add `--model` flag for model selection
+- [x] Add `--output` flag for file output vs streaming
+- [x] Implement comprehensive error handling and messages
 
 #### Basic Diff Utility
-- [ ] Create `TextDiffer` class
-- [ ] Implement unified diff format
-- [ ] Implement split diff format  
-- [ ] Add `--unified`/`--split` flags
-- [ ] Add rich terminal formatting
+- [x] Create `TextDiffer` class
+- [x] Implement unified diff format
+- [x] Implement split diff format  
+- [x] Add `--unified`/`--split` flags
+- [x] Add rich terminal formatting
 
-### Phase 3: Epub Support
+### Phase 3: Epub Support ✅ COMPLETED
 
 #### Epub Processing Infrastructure
-- [ ] Implement `EpubProcessor` class
-- [ ] Add epub file parsing with ebooklib
-- [ ] Implement chapter extraction
-- [ ] Add chapter identification and numbering
-- [ ] Create epub reconstruction functionality
+- [x] Implement `EpubProcessor` class
+- [x] Add epub file parsing with ebooklib
+- [x] Implement chapter extraction
+- [x] Add chapter identification and numbering
+- [x] Create epub reconstruction functionality
 
 #### Chapter Processing
-- [ ] Add individual chapter processing
-- [ ] Implement chapter selection by number/name
-- [ ] Add batch processing for entire epubs
-- [ ] Implement progress tracking for batch operations
-- [ ] Add partial save functionality for interrupted processing
+- [x] Add individual chapter processing
+- [x] Implement chapter selection by number/name
+- [x] Add batch processing for entire epubs
+- [x] Implement progress tracking for batch operations
+- [x] Add partial save functionality for interrupted processing
 
 #### Epub CLI Integration
-- [ ] Extend `process` command for epub files
-- [ ] Add `--chapter` flag for individual chapters
-- [ ] Add `--batch` flag for full epub processing
-- [ ] Implement epub-specific error handling
-- [ ] Add epub validation
+- [x] Extend `process` command for epub files
+- [x] Add `--chapter` flag for individual chapters
+- [x] Add `--batch` flag for full epub processing
+- [x] Implement epub-specific error handling
+- [x] Add epub validation
 
 ### Phase 4: Enhanced Features
 
 #### Advanced Diff Functionality
-- [ ] Implement `EpubDiffer` for chapter-by-chapter comparison
-- [ ] Add diff command to CLI
-- [ ] Implement side-by-side epub diff viewing
-- [ ] Add diff statistics and summary
+- [x] Implement `EpubDiffer` for chapter-by-chapter comparison
+- [x] Add diff command to CLI for epub files
+- [x] Implement side-by-side epub diff viewing
+- [x] Add diff statistics and summary
 - [ ] Create model comparison utilities
 
 #### Model Management
-- [ ] Add `models` command to list available models
-- [ ] Implement model switching without restart
+- [x] Add `models` command to list available models
+- [x] Implement model switching without restart
 - [ ] Add model performance testing utilities
 - [ ] Create model recommendation system
 - [ ] Add model-specific configuration options

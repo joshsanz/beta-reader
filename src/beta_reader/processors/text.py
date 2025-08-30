@@ -22,10 +22,10 @@ class TextProcessor(BaseProcessor):
 
     def can_process(self, file_path: Path) -> bool:
         """Check if this processor can handle text files.
-        
+
         Args:
             file_path: Path to the file to check.
-            
+
         Returns:
             True if the file has a .txt extension, False otherwise.
         """
@@ -39,16 +39,16 @@ class TextProcessor(BaseProcessor):
         model: str | None = None,
     ) -> str:
         """Process a text file with the LLM.
-        
+
         Args:
             file_path: Path to the input text file.
             output_path: Optional path to save the output. If None, returns the result.
             stream: Whether to stream output to terminal.
             model: Optional model override.
-            
+
         Returns:
             Processed content as string.
-            
+
         Raises:
             FileProcessingError: If processing fails.
         """
@@ -78,14 +78,14 @@ class TextProcessor(BaseProcessor):
         model: str | None = None,
     ) -> Iterator[str]:
         """Process a text file with streaming output.
-        
+
         Args:
             file_path: Path to the input text file.
             model: Optional model override.
-            
+
         Yields:
             Chunks of processed text.
-            
+
         Raises:
             FileProcessingError: If processing fails.
         """
@@ -99,12 +99,11 @@ class TextProcessor(BaseProcessor):
             content = self._read_file_content(file_path)
             model_name = self._get_model(model)
 
-            for chunk in self.client.generate_stream(
+            yield from self.client.generate_stream(
                 model=model_name,
                 prompt=content,
                 system_prompt=self._system_prompt,
-            ):
-                yield chunk
+            )
 
         except Exception as e:
             if isinstance(e, FileProcessingError):
@@ -118,12 +117,12 @@ class TextProcessor(BaseProcessor):
         output_path: Path | None = None
     ) -> str:
         """Process content with streaming output to terminal.
-        
+
         Args:
             content: Text content to process.
             model: Model name to use.
             output_path: Optional path to save output.
-            
+
         Returns:
             Complete processed text.
         """
@@ -165,12 +164,12 @@ class TextProcessor(BaseProcessor):
         output_path: Path | None = None
     ) -> str:
         """Process content without streaming.
-        
+
         Args:
             content: Text content to process.
             model: Model name to use.
             output_path: Optional path to save output.
-            
+
         Returns:
             Complete processed text.
         """
@@ -191,10 +190,10 @@ class TextProcessor(BaseProcessor):
 
     def _load_system_prompt(self) -> str:
         """Load the system prompt for beta reading.
-        
+
         Returns:
             System prompt content.
-            
+
         Raises:
             FileProcessingError: If system prompt cannot be loaded.
         """

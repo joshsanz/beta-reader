@@ -13,7 +13,7 @@ class BaseProcessor(ABC):
 
     def __init__(self, client: OllamaClient, config: Config) -> None:
         """Initialize processor.
-        
+
         Args:
             client: Ollama client for LLM communication.
             config: Application configuration.
@@ -24,10 +24,10 @@ class BaseProcessor(ABC):
     @abstractmethod
     def can_process(self, file_path: Path) -> bool:
         """Check if this processor can handle the given file.
-        
+
         Args:
             file_path: Path to the file to check.
-            
+
         Returns:
             True if this processor can handle the file, False otherwise.
         """
@@ -42,16 +42,16 @@ class BaseProcessor(ABC):
         model: str | None = None,
     ) -> str:
         """Process a file with the LLM.
-        
+
         Args:
             file_path: Path to the input file.
             output_path: Optional path to save the output. If None, returns the result.
             stream: Whether to stream output to terminal.
             model: Optional model override.
-            
+
         Returns:
             Processed content as string.
-            
+
         Raises:
             FileProcessingError: If processing fails.
         """
@@ -64,14 +64,14 @@ class BaseProcessor(ABC):
         model: str | None = None,
     ) -> Iterator[str]:
         """Process a file with streaming output.
-        
+
         Args:
             file_path: Path to the input file.
             model: Optional model override.
-            
+
         Yields:
             Chunks of processed text.
-            
+
         Raises:
             FileProcessingError: If processing fails.
         """
@@ -79,10 +79,10 @@ class BaseProcessor(ABC):
 
     def _get_model(self, model_override: str | None = None) -> str:
         """Get the model to use for processing.
-        
+
         Args:
             model_override: Optional model override.
-            
+
         Returns:
             Model name to use.
         """
@@ -90,13 +90,13 @@ class BaseProcessor(ABC):
 
     def _read_file_content(self, file_path: Path) -> str:
         """Read content from a file.
-        
+
         Args:
             file_path: Path to the file to read.
-            
+
         Returns:
             File content as string.
-            
+
         Raises:
             FileProcessingError: If file cannot be read.
         """
@@ -110,11 +110,11 @@ class BaseProcessor(ABC):
 
     def _write_file_content(self, file_path: Path, content: str) -> None:
         """Write content to a file.
-        
+
         Args:
             file_path: Path to the file to write.
             content: Content to write.
-            
+
         Raises:
             FileProcessingError: If file cannot be written.
         """

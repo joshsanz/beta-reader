@@ -8,10 +8,10 @@ from rich.console import Console
 from rich.table import Table
 
 from ..core.config import Config
-from ..diff import TextDiffer
+from ..diff import EpubDiffer, TextDiffer
 from ..llm.client import create_client
 from ..llm.exceptions import BetaReaderError
-from ..processors import TextProcessor
+from ..processors import EpubProcessor, TextProcessor
 
 app = typer.Typer(
     name="beta-reader",
@@ -70,10 +70,45 @@ def config_show() -> None:
         table.add_row("Streaming", "Yes" if config.output.streaming else "No")
         table.add_row("Default Diff Format", config.diff.default_format)
 
+        # Add system prompt path
+        system_prompt_path = config.get_system_prompt_path()
+        table.add_row("System Prompt Path", str(system_prompt_path))
+
         console.print(table)
 
     except BetaReaderError as e:
         print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command(name="system-prompt")
+def system_prompt() -> None:
+    """Show the current system prompt used for processing."""
+    try:
+        config = Config.load_from_file()
+        system_prompt_path = config.get_system_prompt_path()
+
+        if not system_prompt_path.exists():
+            print(f"[red]Error: System prompt file not found: {system_prompt_path}[/red]")
+            raise typer.Exit(1)
+
+        console.print(f"\n[bold blue]System Prompt Location:[/bold blue] {system_prompt_path}")
+        console.print(f"[bold blue]File size:[/bold blue] {system_prompt_path.stat().st_size:,} bytes")
+        console.print("\n[bold blue]System Prompt Content:[/bold blue]")
+        console.print("─" * 80)
+
+        with open(system_prompt_path, encoding="utf-8") as f:
+            content = f.read()
+
+        # Display the prompt with syntax highlighting for readability
+        console.print(f"[dim]{content}[/dim]")
+        console.print("─" * 80)
+
+    except BetaReaderError as e:
+        print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+    except Exception as e:
+        print(f"[red]Error reading system prompt: {e}[/red]")
         raise typer.Exit(1)
 
 
@@ -83,6 +118,8 @@ def process(
     model: str | None = typer.Option(None, "--model", "-m", help="Model to use"),
     output: Path | None = typer.Option(None, "--output", "-o", help="Output file"),
     stream: bool = typer.Option(True, "--stream/--no-stream", help="Stream output"),
+    chapter: int | None = typer.Option(None, "--chapter", "-c", help="Process specific chapter (epub only)"),
+    batch: bool = typer.Option(False, "--batch", "-b", help="Process all chapters (epub only)"),
 ) -> None:
     """Process a text or epub file for beta reading."""
     try:
@@ -98,10 +135,15 @@ def process(
         # Create appropriate processor
         processor = None
         if input_file.suffix.lower() == ".txt":
+            if chapter is not None or batch:
+                print("[red]Error: --chapter and --batch options are only for epub files[/red]")
+                raise typer.Exit(1)
             processor = TextProcessor(client, config)
+        elif input_file.suffix.lower() == ".epub":
+            processor = EpubProcessor(client, config)
         else:
             print(f"[red]Error: Unsupported file type: {input_file.suffix}[/red]")
-            print("[dim]Currently supported: .txt[/dim]")
+            print("[dim]Currently supported: .txt, .epub[/dim]")
             raise typer.Exit(1)
 
         # Validate model if specified
@@ -112,12 +154,22 @@ def process(
             raise typer.Exit(1)
 
         # Process the file
-        result = processor.process_file(
-            input_file,
-            output_path=output,
-            stream=stream,
-            model=model,
-        )
+        if isinstance(processor, EpubProcessor):
+            result = processor.process_file(
+                input_file,
+                output_path=output,
+                stream=stream,
+                model=model,
+                chapter=chapter,
+                batch=batch,
+            )
+        else:
+            result = processor.process_file(
+                input_file,
+                output_path=output,
+                stream=stream,
+                model=model,
+            )
 
         # If not streaming or saving to file, print result
         if not stream and not output:
@@ -155,8 +207,20 @@ def diff(
             print(f"[red]Error: Edited file not found: {edited}[/red]")
             raise typer.Exit(1)
 
-        # Create differ and generate/display diff
-        differ = TextDiffer()
+        # Validate file types match
+        if original.suffix.lower() != edited.suffix.lower():
+            print(f"[red]Error: File types must match. Got {original.suffix} and {edited.suffix}[/red]")
+            raise typer.Exit(1)
+
+        # Create appropriate differ
+        if original.suffix.lower() == ".epub":
+            differ = EpubDiffer()
+        elif original.suffix.lower() == ".txt":
+            differ = TextDiffer()
+        else:
+            print(f"[red]Error: Unsupported file type: {original.suffix}[/red]")
+            print("[dim]Currently supported: .txt, .epub[/dim]")
+            raise typer.Exit(1)
 
         if output:
             # Save diff to file

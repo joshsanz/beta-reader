@@ -5,29 +5,29 @@ ollama:
   # Model-specific configurations
   model_configs:
     "gemma3:12b-it-qat":
-      temperature: 0.05
+      temperature: 0.1
       timeout: 60
       top_p: 0.95
       top_k: 64
-      repeat_penalty: -0.5
+      repeat_penalty: -0.25
     "qwen3:30b-a3b-instruct-2507-q4_K_M":
-      temperature: 0.05
+      temperature: 0.1
       timeout: 60
       top_p: 0.80
       top_k: 20
       repeat_penalty: -0.5
     "qwen3:8b":
-      temperature: 0.05
+      temperature: 0.1
       timeout: 60
       top_p: 0.95
       top_k: 20
-      repeat_penalty: -0.5
+      repeat_penalty: -0.25
     "mistral-nemo:12b-instruct-2407-q4_K_M":
-      temperature: 0.05
+      temperature: 0.1
       timeout: 60
       top_p: 0.95
       top_k: 32
-      repeat_penalty: -0.5
+      repeat_penalty: -0.25
 
 output:
   default_format: "text"

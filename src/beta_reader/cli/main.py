@@ -7,6 +7,7 @@ from rich import print
 from rich.console import Console
 from rich.table import Table
 
+from ..core.batch_state import BatchStateManager
 from ..core.config import Config
 from ..core.model_comparison import ModelComparison
 from ..core.model_recommendations import ModelRecommendationEngine
@@ -122,6 +123,7 @@ def process(
     stream: bool = typer.Option(True, "--stream/--no-stream", help="Stream output"),
     chapter: int | None = typer.Option(None, "--chapter", "-c", help="Process specific chapter (epub only)"),
     batch: bool = typer.Option(False, "--batch", "-b", help="Process all chapters (epub only)"),
+    resume: str | None = typer.Option(None, "--resume", help="Resume interrupted batch by batch ID"),
 ) -> None:
     """Process a text or epub file for beta reading."""
     try:
@@ -164,6 +166,7 @@ def process(
                 model=model,
                 chapter=chapter,
                 batch=batch,
+                resume_batch_id=resume,
             )
         else:
             result = processor.process_file(
@@ -405,6 +408,163 @@ def compare(
     except KeyboardInterrupt:
         print("\n[yellow]Comparison interrupted by user[/yellow]")
         raise typer.Exit(130)
+
+
+@app.command(name="batch-list")
+def batch_list() -> None:
+    """List all batch processing states."""
+    try:
+        batch_manager = BatchStateManager()
+        states = batch_manager.list_batch_states()
+
+        if not states:
+            print("[yellow]No batch states found[/yellow]")
+            return
+
+        table = Table(title="Batch Processing States")
+        table.add_column("Batch ID", style="cyan")
+        table.add_column("Input File", style="white")
+        table.add_column("Model", style="green")
+        table.add_column("Status", style="yellow")
+        table.add_column("Progress", style="blue")
+        table.add_column("Started", style="dim")
+
+        import datetime
+
+        for state in states:
+            # Format timestamp
+            start_time = datetime.datetime.fromtimestamp(state['start_time'])
+            start_str = start_time.strftime('%Y-%m-%d %H:%M')
+
+            # Style status
+            status = state['status']
+            if status == 'completed':
+                status = f"[green]{status}[/green]"
+            elif status == 'failed':
+                status = f"[red]{status}[/red]"
+            elif status == 'paused':
+                status = f"[yellow]{status}[/yellow]"
+            else:
+                status = f"[blue]{status}[/blue]"
+
+            # Truncate filename if too long
+            filename = Path(state['input_file']).name
+            if len(filename) > 30:
+                filename = filename[:27] + "..."
+
+            table.add_row(
+                state['batch_id'][:12] + "...",  # Truncate batch ID
+                filename,
+                state['model'],
+                status,
+                state['progress'],
+                start_str
+            )
+
+        console.print(table)
+
+        # Show resumable batches
+        resumable = batch_manager.get_resumable_batches()
+        if resumable:
+            console.print(f"\n[green]{len(resumable)} batch(es) can be resumed with --resume <batch-id>[/green]")
+
+    except Exception as e:
+        print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command(name="batch-clean")
+def batch_clean(
+    days: int = typer.Option(7, "--days", "-d", help="Delete states older than N days"),
+    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
+) -> None:
+    """Clean up old batch processing states."""
+    try:
+        batch_manager = BatchStateManager()
+
+        if not force:
+            confirm = typer.confirm(f"Delete batch states older than {days} days?")
+            if not confirm:
+                print("Cancelled")
+                return
+
+        cleaned = batch_manager.cleanup_old_states(days)
+        print(f"[green]Cleaned up {cleaned} old batch state(s)[/green]")
+
+    except Exception as e:
+        print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command(name="batch-status")
+def batch_status(
+    batch_id: str = typer.Argument(..., help="Batch ID to show status for"),
+) -> None:
+    """Show detailed status of a specific batch."""
+    try:
+        batch_manager = BatchStateManager()
+        state = batch_manager.load_batch_state(batch_id)
+
+        import datetime
+
+        # Show batch overview
+        console.print(f"\n[bold blue]Batch Status:[/bold blue] {batch_id}")
+        console.print(f"[dim]Input file:[/dim] {state.input_file}")
+        console.print(f"[dim]Model:[/dim] {state.model}")
+        console.print(f"[dim]Status:[/dim] {state.status}")
+        console.print(f"[dim]Started:[/dim] {datetime.datetime.fromtimestamp(state.start_time)}")
+        console.print(f"[dim]Progress:[/dim] {state.completed_chapters}/{state.total_chapters} chapters")
+
+        if state.failed_chapters > 0:
+            console.print(f"[dim]Failed chapters:[/dim] {state.failed_chapters}")
+
+        # Show chapter details
+        table = Table(title="Chapter Status")
+        table.add_column("Chapter", style="cyan", width=8)
+        table.add_column("Title", style="white", width=40)
+        table.add_column("Status", style="yellow", width=12)
+        table.add_column("Time", style="green", width=8)
+        table.add_column("Words", style="blue", width=8)
+
+        for i, chapter in enumerate(state.chapters, 1):
+            # Format processing time
+            time_str = ""
+            if chapter.processing_time:
+                time_str = f"{chapter.processing_time:.1f}s"
+
+            # Format word count
+            words_str = ""
+            if chapter.word_count:
+                words_str = f"{chapter.word_count:,}"
+
+            # Format status with colors
+            status = chapter.status
+            if status == 'completed':
+                status = f"[green]{status}[/green]"
+            elif status == 'failed':
+                status = f"[red]{status}[/red]"
+            elif status == 'processing':
+                status = f"[yellow]{status}[/yellow]"
+
+            # Truncate title if needed
+            title = chapter.chapter_title
+            if len(title) > 37:
+                title = title[:34] + "..."
+
+            table.add_row(str(i), title, status, time_str, words_str)
+
+        console.print(table)
+
+        # Show failed chapters with errors
+        failed_chapters = [c for c in state.chapters if c.status == 'failed']
+        if failed_chapters:
+            console.print("\n[bold red]Failed Chapters:[/bold red]")
+            for chapter in failed_chapters:
+                console.print(f"  [red]Chapter {chapter.chapter_index + 1}:[/red] {chapter.error_message}")
+
+    except Exception as e:
+        print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
 
 
 def main() -> None:

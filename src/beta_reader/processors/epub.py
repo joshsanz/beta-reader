@@ -9,6 +9,7 @@ from ebooklib import epub
 from rich.console import Console
 from rich.progress import Progress
 
+from ..core.batch_state import BatchStateManager
 from ..llm.exceptions import FileProcessingError
 from .base import BaseProcessor
 
@@ -21,6 +22,7 @@ class EpubProcessor(BaseProcessor):
         super().__init__(*args, **kwargs)
         self.console = Console()
         self._system_prompt = self._load_system_prompt()
+        self.batch_manager = BatchStateManager()
 
     def can_process(self, file_path: Path) -> bool:
         """Check if this processor can handle epub files.
@@ -41,6 +43,7 @@ class EpubProcessor(BaseProcessor):
         model: str | None = None,
         chapter: int | None = None,
         batch: bool = False,
+        resume_batch_id: str | None = None,
     ) -> str:
         """Process an epub file with the LLM.
 
@@ -51,6 +54,7 @@ class EpubProcessor(BaseProcessor):
             model: Optional model override.
             chapter: Optional specific chapter number to process (1-indexed).
             batch: Whether to process all chapters in batch mode.
+            resume_batch_id: Optional batch ID to resume from.
 
         Returns:
             Processed content as string (or path to output epub if output_path specified).
@@ -73,9 +77,9 @@ class EpubProcessor(BaseProcessor):
             if chapter is not None:
                 # Process single chapter
                 return self._process_single_chapter(book, chapter, model_name, stream, output_path)
-            elif batch or output_path:
+            elif batch or output_path or resume_batch_id:
                 # Process all chapters and create new epub
-                return self._process_batch(book, file_path, model_name, stream, output_path)
+                return self._process_batch(book, file_path, model_name, stream, output_path, resume_batch_id)
             else:
                 # Just list chapters for user to choose
                 self._list_chapters(book)
@@ -273,8 +277,9 @@ class EpubProcessor(BaseProcessor):
         model: str,
         stream: bool,
         output_path: Path | None = None,
+        resume_batch_id: str | None = None,
     ) -> str:
-        """Process all chapters in batch mode.
+        """Process all chapters in batch mode with resume support.
 
         Args:
             book: The epub book object.
@@ -282,6 +287,7 @@ class EpubProcessor(BaseProcessor):
             model: Model name to use.
             stream: Whether to stream output.
             output_path: Output epub path.
+            resume_batch_id: Optional batch ID to resume from.
 
         Returns:
             Path to output epub or summary text.
@@ -291,24 +297,106 @@ class EpubProcessor(BaseProcessor):
         if not chapters:
             raise FileProcessingError("No chapters found in epub file")
 
+        # Load or create batch state
+        if resume_batch_id:
+            try:
+                batch_state = self.batch_manager.load_batch_state(resume_batch_id)
+                self.console.print(f"\n[yellow]Resuming batch processing:[/yellow] {resume_batch_id}")
+                self.console.print(f"[dim]Progress: {batch_state.completed_chapters}/{batch_state.total_chapters} chapters completed[/dim]")
+            except Exception as e:
+                self.console.print(f"[red]Could not resume batch {resume_batch_id}: {e}[/red]")
+                self.console.print("[yellow]Starting new batch instead...[/yellow]")
+                resume_batch_id = None
+
+        if not resume_batch_id:
+            # Create new batch state
+            batch_id = self.batch_manager.generate_batch_id(original_path, model)
+            batch_state = self.batch_manager.create_batch_state(
+                batch_id, original_path, chapters, model, output_path
+            )
+            self.console.print(f"\n[bold blue]Starting batch processing:[/bold blue] {batch_id}")
+
         self.console.print(f"\n[bold blue]Processing {len(chapters)} chapters with model:[/bold blue] {model}")
 
+        # Collect completed chapters if resuming
         processed_chapters = []
+        if resume_batch_id:
+            # Load previously completed chapters
+            for i, chapter_state in enumerate(batch_state.chapters):
+                if chapter_state.status == 'completed' and chapter_state.output_file:
+                    try:
+                        with open(chapter_state.output_file, encoding='utf-8') as f:
+                            content = f.read()
+                        processed_chapters.append((chapter_state.chapter_title, content))
+                    except Exception:
+                        # If we can't load previous output, reprocess this chapter
+                        chapter_state.status = 'pending'
+
+        start_chapter = len(processed_chapters)
 
         with Progress() as progress:
             task = progress.add_task("[green]Processing chapters...", total=len(chapters))
+            progress.update(task, completed=start_chapter)
 
-            for i, (title, content) in enumerate(chapters, 1):
-                progress.update(task, description=f"[green]Processing chapter {i}: {title[:30]}...")
+            try:
+                for i, (title, content) in enumerate(chapters[start_chapter:], start_chapter + 1):
+                    chapter_index = i - 1
+                    progress.update(task, description=f"[green]Processing chapter {i}: {title[:30]}...")
 
-                if stream:
-                    self.console.print(f"\n[bold]Chapter {i}: {title}[/bold]")
-                    processed_content = self._process_with_streaming(content, model, None, title)
-                else:
-                    processed_content = self._process_without_streaming(content, model, None, title)
+                    # Update chapter status to processing
+                    self.batch_manager.update_chapter_status(batch_state, chapter_index, 'processing')
 
-                processed_chapters.append((title, processed_content))
-                progress.update(task, advance=1)
+                    try:
+                        if stream:
+                            self.console.print(f"\n[bold]Chapter {i}: {title}[/bold]")
+                            processed_content = self._process_with_streaming(content, model, None, title)
+                        else:
+                            processed_content = self._process_without_streaming(content, model, None, title)
+
+                        # Save chapter output for resume capability
+                        if output_path:
+                            chapter_output_dir = output_path.parent / f".{output_path.stem}_chapters"
+                            chapter_output_dir.mkdir(exist_ok=True)
+                            chapter_file = chapter_output_dir / f"chapter_{i:03d}_{title[:50].replace('/', '_')}.txt"
+                            with open(chapter_file, 'w', encoding='utf-8') as f:
+                                f.write(processed_content)
+
+                            chapter_output_file = str(chapter_file)
+                        else:
+                            chapter_output_file = None
+
+                        processed_chapters.append((title, processed_content))
+
+                        # Update chapter status to completed
+                        self.batch_manager.update_chapter_status(
+                            batch_state,
+                            chapter_index,
+                            'completed',
+                            output_file=chapter_output_file,
+                            word_count=len(processed_content.split())
+                        )
+
+                        progress.update(task, advance=1)
+
+                    except Exception as e:
+                        # Mark chapter as failed but continue with others
+                        self.batch_manager.update_chapter_status(
+                            batch_state,
+                            chapter_index,
+                            'failed',
+                            error_message=str(e)
+                        )
+                        self.console.print(f"[red]Failed to process chapter {i}: {e}[/red]")
+                        # Add empty content to maintain chapter order
+                        processed_chapters.append((title, f"[ERROR: Failed to process - {e}]"))
+                        progress.update(task, advance=1)
+
+            except KeyboardInterrupt:
+                # Mark batch as paused for resume
+                batch_state.status = 'paused'
+                self.batch_manager.save_batch_state(batch_state)
+                self.console.print(f"\n[yellow]Batch processing paused. Resume with batch ID:[/yellow] {batch_state.batch_id}")
+                raise FileProcessingError("Batch processing interrupted by user")
 
         if output_path:
             # Create new epub with processed content

@@ -1,0 +1,47 @@
+# Beta Reader Configuration Example
+# Copy this file to config.yaml and customize as needed
+
+ollama:
+  base_url: "http://localhost:11434"
+  default_model: "llama3.1:8b"
+  timeout: 60
+  
+  # Model-specific configurations
+  model_configs:
+    # Fast model for quick testing - higher temperature for creativity
+    "llama3.2:1b":
+      temperature: 0.3
+      timeout: 30
+      top_p: 0.8
+      top_k: 40
+    
+    # Large model for thorough editing - very low temperature for consistency
+    "llama3.1:70b":
+      temperature: 0.05
+      timeout: 180
+      top_p: 0.95
+    
+    # Code-focused model with custom system prompt
+    "codellama:7b":
+      temperature: 0.1
+      timeout: 90
+      system_prompt_override: |
+        You are a professional copy editor specializing in technical and code-related content.
+        Focus on:
+        1. Technical accuracy and consistency
+        2. Code formatting and syntax
+        3. Technical terminology
+        4. Grammar and style while preserving technical meaning
+    
+    # Creative model for fiction
+    "mistral:7b":
+      temperature: 0.2
+      top_p: 0.9
+      timeout: 120
+
+output:
+  default_format: "text"
+  streaming: true
+
+diff:
+  default_format: "unified"

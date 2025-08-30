@@ -3,7 +3,18 @@
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
+
+
+class ModelSpecificConfig(BaseModel):
+    """Configuration for a specific model."""
+
+    timeout: int | None = Field(default=None, description="Model-specific timeout in seconds")
+    max_tokens: int | None = Field(default=None, description="Maximum tokens to generate")
+    temperature: float | None = Field(default=None, description="Temperature for randomness (0.0-1.0)")
+    top_p: float | None = Field(default=None, description="Nucleus sampling parameter")
+    top_k: int | None = Field(default=None, description="Top-k sampling parameter")
+    system_prompt_override: str | None = Field(default=None, description="Override system prompt for this model")
 
 
 class OllamaConfig(BaseModel):
@@ -12,6 +23,10 @@ class OllamaConfig(BaseModel):
     base_url: str = Field(default="http://localhost:11434", description="Ollama server URL")
     default_model: str = Field(default="llama3.1:8b", description="Default model to use")
     timeout: int = Field(default=60, description="Request timeout in seconds")
+    model_configs: dict[str, ModelSpecificConfig] = Field(
+        default_factory=dict,
+        description="Model-specific configurations"
+    )
 
 
 class OutputConfig(BaseModel):
@@ -26,7 +41,8 @@ class DiffConfig(BaseModel):
 
     default_format: str = Field(default="unified", description="Default diff format: unified or split")
 
-    @validator("default_format")
+    @field_validator("default_format")
+    @classmethod
     def validate_diff_format(cls, v: str) -> str:
         """Validate diff format."""
         if v not in ("unified", "split"):
@@ -119,3 +135,39 @@ class Config(BaseModel):
         # Fallback to package directory
         package_dir = Path(__file__).parent.parent.parent.parent
         return package_dir / "system_prompt.txt"
+
+    def get_model_config(self, model_name: str) -> ModelSpecificConfig:
+        """Get configuration for a specific model.
+
+        Args:
+            model_name: Name of the model to get config for.
+
+        Returns:
+            Model-specific configuration, or default config if not found.
+        """
+        return self.ollama.model_configs.get(model_name, ModelSpecificConfig())
+
+    def get_effective_timeout(self, model_name: str) -> int:
+        """Get effective timeout for a model (model-specific or default).
+
+        Args:
+            model_name: Name of the model.
+
+        Returns:
+            Timeout in seconds.
+        """
+        model_config = self.get_model_config(model_name)
+        return model_config.timeout if model_config.timeout is not None else self.ollama.timeout
+
+    def get_effective_system_prompt(self, model_name: str, default_prompt: str) -> str:
+        """Get effective system prompt for a model.
+
+        Args:
+            model_name: Name of the model.
+            default_prompt: Default system prompt.
+
+        Returns:
+            System prompt to use (model-specific override or default).
+        """
+        model_config = self.get_model_config(model_name)
+        return model_config.system_prompt_override if model_config.system_prompt_override else default_prompt

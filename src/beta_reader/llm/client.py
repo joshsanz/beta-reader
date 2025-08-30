@@ -12,13 +12,15 @@ from .exceptions import ModelNotFoundError, OllamaConnectionError, ProcessingErr
 class OllamaClient:
     """Client for interacting with Ollama server."""
 
-    def __init__(self, config: OllamaConfig) -> None:
+    def __init__(self, config: OllamaConfig, full_config: Config | None = None) -> None:
         """Initialize Ollama client.
 
         Args:
             config: Ollama configuration.
+            full_config: Full application configuration for model-specific settings.
         """
         self.config = config
+        self.full_config = full_config
         self._sync_client = Client(host=config.base_url)
         self._async_client = AsyncClient(host=config.base_url)
 
@@ -79,6 +81,35 @@ class OllamaClient:
         if model_name not in available_models:
             raise ModelNotFoundError(model_name, available_models)
 
+    def _get_model_options(self, model: str) -> dict[str, float | int]:
+        """Get model-specific generation options.
+
+        Args:
+            model: Model name to get options for.
+
+        Returns:
+            Dictionary of model options.
+        """
+        # Default options
+        options = {
+            "temperature": 0.1,  # Low temperature for consistency
+            "top_p": 0.9,
+            "repeat_penalty": 1.1,
+        }
+
+        # Override with model-specific settings if available
+        if self.full_config:
+            model_config = self.full_config.get_model_config(model)
+
+            if model_config.temperature is not None:
+                options["temperature"] = model_config.temperature
+            if model_config.top_p is not None:
+                options["top_p"] = model_config.top_p
+            if model_config.top_k is not None:
+                options["top_k"] = model_config.top_k
+
+        return options
+
     def generate(
         self,
         model: str,
@@ -102,17 +133,19 @@ class OllamaClient:
         """
         self.validate_model(model)
 
+        # Use model-specific system prompt if configured
+        effective_system_prompt = system_prompt
+        if self.full_config and system_prompt:
+            effective_system_prompt = self.full_config.get_effective_system_prompt(model, system_prompt)
+
         try:
             response = self._sync_client.generate(
                 model=model,
                 prompt=prompt,
-                system=system_prompt,
+                system=effective_system_prompt,
                 stream=False,
-                options={
-                    "temperature": 0.1,  # Low temperature for consistency
-                    "top_p": 0.9,
-                    "repeat_penalty": 1.1,
-                }
+                options=self._get_model_options(model),
+                think=False,  # Disable "think" feature for direct response
             )
             return response["response"]
         except ollama.RequestError as e:
@@ -143,17 +176,19 @@ class OllamaClient:
         """
         self.validate_model(model)
 
+        # Use model-specific system prompt if configured
+        effective_system_prompt = system_prompt
+        if self.full_config and system_prompt:
+            effective_system_prompt = self.full_config.get_effective_system_prompt(model, system_prompt)
+
         try:
             response_stream = self._sync_client.generate(
                 model=model,
                 prompt=prompt,
-                system=system_prompt,
+                system=effective_system_prompt,
                 stream=True,
-                options={
-                    "temperature": 0.1,  # Low temperature for consistency
-                    "top_p": 0.9,
-                    "repeat_penalty": 1.1,
-                }
+                options=self._get_model_options(model),
+                think=False,  # Disable "think" feature for direct response
             )
 
             for chunk in response_stream:
@@ -264,4 +299,4 @@ def create_client(config: Config | None = None) -> OllamaClient:
     if config is None:
         config = Config.load_from_file()
 
-    return OllamaClient(config.ollama)
+    return OllamaClient(config.ollama, config)

@@ -8,6 +8,8 @@ from rich.console import Console
 from rich.table import Table
 
 from ..core.config import Config
+from ..core.model_comparison import ModelComparison
+from ..core.model_recommendations import ModelRecommendationEngine
 from ..diff import EpubDiffer, TextDiffer
 from ..llm.client import create_client
 from ..llm.exceptions import BetaReaderError
@@ -238,6 +240,170 @@ def diff(
         raise typer.Exit(1)
     except KeyboardInterrupt:
         print("\n[yellow]Diff interrupted by user[/yellow]")
+        raise typer.Exit(130)
+
+
+@app.command()
+def compare(
+    input_file: Path = typer.Argument(..., help="Input file to process with multiple models"),
+    models: str | None = typer.Option(None, "--models", "-m", help="Comma-separated list of models to compare"),
+    models_file: Path | None = typer.Option(None, "--models-file", "-f", help="File containing list of models (one per line)"),
+    output_dir: Path | None = typer.Option(None, "--output-dir", "-d", help="Directory to save individual outputs"),
+    report: Path | None = typer.Option(None, "--report", "-r", help="Save comparison report to file"),
+    stream: bool = typer.Option(False, "--stream", help="Stream outputs for visual comparison"),
+    chapter: int | None = typer.Option(None, "--chapter", "-c", help="Process specific chapter (epub only)"),
+    no_warmup: bool = typer.Option(False, "--no-warmup", help="Skip model warmup (include loading time in measurements)"),
+    recommend: bool = typer.Option(False, "--recommend", help="Generate model recommendations based on results"),
+    recommend_report: Path | None = typer.Option(None, "--recommend-report", help="Save recommendations report to file"),
+) -> None:
+    """Compare multiple models on the same input file."""
+    try:
+        # Load configuration
+        config = Config.load_from_file()
+        client = create_client(config)
+
+        # Check if input file exists
+        if not input_file.exists():
+            print(f"[red]Error: Input file not found: {input_file}[/red]")
+            raise typer.Exit(1)
+
+        # Determine which models to compare
+        model_list = []
+
+        if models_file:
+            if not models_file.exists():
+                print(f"[red]Error: Models file not found: {models_file}[/red]")
+                raise typer.Exit(1)
+
+            try:
+                with open(models_file, encoding="utf-8") as f:
+                    model_list = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+            except Exception as e:
+                print(f"[red]Error reading models file: {e}[/red]")
+                raise typer.Exit(1)
+
+        elif models:
+            model_list = [model.strip() for model in models.split(",") if model.strip()]
+        else:
+            print("[red]Error: Must specify models via --models or --models-file[/red]")
+            raise typer.Exit(1)
+
+        if not model_list:
+            print("[red]Error: No models specified[/red]")
+            raise typer.Exit(1)
+
+        if len(model_list) < 2:
+            print("[red]Error: At least 2 models required for comparison[/red]")
+            raise typer.Exit(1)
+
+        # Validate all models exist
+        available_models = client.list_models()
+        invalid_models = [model for model in model_list if model not in available_models]
+        if invalid_models:
+            print(f"[red]Error: Models not found: {', '.join(invalid_models)}[/red]")
+            print(f"[dim]Available models: {', '.join(available_models)}[/dim]")
+            raise typer.Exit(1)
+
+        # Load system prompt
+        system_prompt_path = config.get_system_prompt_path()
+        if not system_prompt_path.exists():
+            print(f"[red]Error: System prompt not found: {system_prompt_path}[/red]")
+            raise typer.Exit(1)
+
+        with open(system_prompt_path, encoding="utf-8") as f:
+            system_prompt = f.read()
+
+        # Extract text based on file type
+        input_text = ""
+        if input_file.suffix.lower() == ".txt":
+            if chapter is not None:
+                print("[red]Error: --chapter option is only for epub files[/red]")
+                raise typer.Exit(1)
+            with open(input_file, encoding="utf-8") as f:
+                input_text = f.read()
+        elif input_file.suffix.lower() == ".epub":
+            # Load epub and extract chapters
+            from ebooklib import epub
+            book = epub.read_epub(str(input_file))
+
+            # Create temporary processor to use its chapter extraction method
+            processor = EpubProcessor(client, config)
+            chapters = processor._extract_chapters(book)
+
+            if chapter is not None:
+                if chapter < 1 or chapter > len(chapters):
+                    print(f"[red]Error: Chapter {chapter} not found. Available: 1-{len(chapters)}[/red]")
+                    raise typer.Exit(1)
+                _, input_text = chapters[chapter - 1]
+            else:
+                # Use first chapter or prompt user to specify
+                if len(chapters) > 1:
+                    print(f"[yellow]Warning: Multiple chapters found ({len(chapters)}). Using first chapter.[/yellow]")
+                    print("[dim]Use --chapter N to specify a different chapter[/dim]")
+                _, input_text = chapters[0]
+        else:
+            print(f"[red]Error: Unsupported file type: {input_file.suffix}[/red]")
+            print("[dim]Currently supported: .txt, .epub[/dim]")
+            raise typer.Exit(1)
+
+        if not input_text.strip():
+            print("[red]Error: Input text is empty[/red]")
+            raise typer.Exit(1)
+
+        # Create model comparison instance
+        comparison = ModelComparison(client)
+
+        if stream:
+            # Stream comparison
+            console.print(f"\n[bold blue]Streaming comparison of {len(model_list)} models[/bold blue]")
+            console.print(f"[dim]Input: {input_file} ({len(input_text):,} characters)[/dim]")
+
+            for model, chunk in comparison.compare_with_streaming(input_text, model_list, system_prompt):
+                console.print(f"[cyan]{model}:[/cyan] ", end="")
+                console.print(chunk, end="")
+
+            console.print("\n[green]Streaming comparison completed[/green]")
+        else:
+            # Batch comparison with warmup option
+            results = comparison.compare_models(
+                input_text,
+                model_list,
+                system_prompt,
+                output_dir,
+                warmup=not no_warmup
+            )
+            comparison.display_comparison_results(results)
+
+            # Show saved files info if output directory was used
+            if output_dir and output_dir.exists():
+                output_files = list(output_dir.glob("*_output.txt"))
+                if output_files:
+                    console.print("\n[green]Individual model outputs saved:[/green]")
+                    for file in sorted(output_files):
+                        model_name = file.stem.replace("_output", "").replace("_", ":")
+                        console.print(f"  [cyan]{model_name}:[/cyan] {file}")
+                    console.print(f"\n[dim]Compare outputs manually using: diff {output_dir}/*_output.txt[/dim]")
+
+            # Generate recommendations if requested
+            if recommend or recommend_report:
+                recommendation_engine = ModelRecommendationEngine()
+                recommendations = recommendation_engine.analyze_results(results)
+
+                if recommend:
+                    recommendation_engine.display_recommendations(recommendations, show_metrics=True)
+
+                if recommend_report:
+                    recommendation_engine.save_recommendations_report(recommendations, recommend_report)
+
+            # Save report if requested
+            if report:
+                comparison.save_comparison_report(results, report, input_text, system_prompt)
+
+    except BetaReaderError as e:
+        print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+    except KeyboardInterrupt:
+        print("\n[yellow]Comparison interrupted by user[/yellow]")
         raise typer.Exit(130)
 
 

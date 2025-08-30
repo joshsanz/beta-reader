@@ -1,0 +1,11 @@
+ollama:
+  base_url: "http://localhost:11434"
+  default_model: "mistral-nemo:12b-instruct-2407-q4_K_M"
+  timeout: 60
+
+output:
+  default_format: "text"
+  streaming: true
+
+diff:
+  default_format: "unified"  # or "split"

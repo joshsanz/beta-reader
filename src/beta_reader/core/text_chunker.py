@@ -2,7 +2,6 @@
 
 import re
 from dataclasses import dataclass
-from typing import Iterator
 
 
 @dataclass
@@ -104,7 +103,7 @@ class TextChunker:
         # Build word positions mapping for accurate position calculation
         remaining_text = text[start_pos:]
         word_positions = self._build_word_positions(remaining_text)
-        
+
         if len(word_positions) <= self.target_word_count:
             # Remaining text fits in one chunk
             return len(text)
@@ -149,17 +148,17 @@ class TextChunker:
             )
             if boundary is not None:
                 return boundary
-        
+
         # If no good boundary found after target, look backwards for high-priority boundaries
         # But don't go too far back - stay within reasonable range
         min_search_pos = max(start_pos, approx_target_pos - (approx_target_pos - start_pos) // 3)
-        
+
         high_priority_patterns = [
             r'\n\s*\n',  # Paragraph breaks
             r'[.!?]\s+', # Sentence endings
             r'[.!?]\n',  # Sentence endings with newline
         ]
-        
+
         for pattern in high_priority_patterns:
             boundary = self._find_boundary_with_pattern_backwards(
                 text, min_search_pos, approx_target_pos, pattern
@@ -174,20 +173,20 @@ class TextChunker:
 
         # Fallback: return end of text
         return len(text)
-    
+
     def _build_word_positions(self, text: str) -> list[tuple[int, int]]:
         """Build a list of (start, end) positions for each word in text.
-        
+
         Args:
             text: Text to analyze.
-            
+
         Returns:
             List of (start_pos, end_pos) tuples for each word.
         """
         word_positions = []
         words = text.split()
         current_pos = 0
-        
+
         for word in words:
             # Find the word in the remaining text
             word_start = text.find(word, current_pos)
@@ -197,7 +196,7 @@ class TextChunker:
             word_end = word_start + len(word)
             word_positions.append((word_start, word_end))
             current_pos = word_end
-        
+
         return word_positions
 
     def _find_boundary_with_pattern(
@@ -223,7 +222,7 @@ class TextChunker:
             return start_search + match.end()
 
         return None
-    
+
     def _find_boundary_with_pattern_backwards(
         self, text: str, start_search: int, end_search: int, pattern: str
     ) -> int | None:
@@ -333,7 +332,7 @@ class TextChunker:
 
         for i in range(len(chunks) - 1):
             current_chunk = chunks[i]
-            next_chunk = chunks[i + 1]
+            chunks[i + 1]
 
             # Find the boundary position in the original text
             boundary_pos = current_chunk.end_position
@@ -359,21 +358,21 @@ class TextChunker:
                 boundary_word_idx = word_idx
 
             # Get context words
-            start_idx = max(0, boundary_word_idx - context_words + 1)
-            end_idx = min(len(text_words), boundary_word_idx + context_words + 1)
+            max(0, boundary_word_idx - context_words + 1)
+            min(len(text_words), boundary_word_idx + context_words + 1)
 
             # Get actual text context around the boundary position for accurate display
             context_chars = 40
             context_start = max(0, boundary_pos - context_chars)
             context_end = min(len(text), boundary_pos + context_chars)
-            
+
             before_text = text[context_start:boundary_pos]
             after_text = text[boundary_pos:context_end]
-            
+
             # Clean up the display text (replace newlines with \\n for visibility)
             before_display = before_text.replace('\n', '\\n').replace('\t', '\\t')
             after_display = after_text.replace('\n', '\\n').replace('\t', '\\t')
-            
+
             # Determine the type of boundary
             boundary_type = "unknown"
             if boundary_pos >= 2 and text[boundary_pos-2:boundary_pos] == '\n\n':
@@ -384,7 +383,7 @@ class TextChunker:
                 boundary_type = "sentence end"
             elif boundary_pos > 0 and text[boundary_pos-1] in ',;:':
                 boundary_type = "punctuation break"
-            
+
             boundary_info = (
                 f"Chunk {i+1}/{len(chunks)} → Chunk {i+2}/{len(chunks)} (pos {boundary_pos}, {boundary_type})\n"
                 f"  Before: ...{before_display[-30:]}\n"

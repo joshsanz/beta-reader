@@ -199,7 +199,7 @@ class ModelRecommendationEngine:
     ) -> str:
         """Generate human-readable reason for recommendation."""
         max_category = max(category_scores, key=category_scores.get)
-        max_score = category_scores[max_category]
+        # category_scores[max_category]
 
         time = result.get('processing_time', 0.0)
         wps = result.get('words_per_second', 0.0)

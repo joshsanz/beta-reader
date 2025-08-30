@@ -10,6 +10,7 @@ from rich.console import Console
 from rich.progress import Progress
 
 from ..core.batch_state import BatchStateManager
+from ..core.format_converter import ensure_markdown_format, ensure_html_format
 from ..core.text_chunker import TextChunk, TextChunker
 from ..llm.exceptions import FileProcessingError
 from .base import BaseProcessor
@@ -313,6 +314,31 @@ class EpubProcessor(BaseProcessor):
                 self.console.print(f"\n[yellow]Resuming batch processing:[/yellow] {short_hash}")
                 self.console.print(f"[dim]Full ID: {full_batch_id}[/dim]")
                 self.console.print(f"[dim]Progress: {batch_state.completed_chapters}/{batch_state.total_chapters} chapters completed[/dim]")
+                
+                # Check if batch is already completed
+                if batch_state.status == 'completed' and batch_state.completed_chapters == batch_state.total_chapters:
+                    self.console.print(f"\n[green]Batch {short_hash} is already completed![/green]")
+                    
+                    if output_path:
+                        # Check if the requested output file already exists
+                        if output_path.exists():
+                            self.console.print(f"[green]Requested output file already exists:[/green] {output_path}")
+                            return str(output_path)
+                        
+                        # Check if original output file exists and user wants same path
+                        original_output = Path(batch_state.output_directory) if batch_state.output_directory else None
+                        if original_output and original_output == output_path and original_output.exists():
+                            self.console.print(f"[green]Output file already exists:[/green] {original_output}")
+                            return str(original_output)
+                        else:
+                            # Regenerate the output EPUB from existing processed chapters
+                            self.console.print(f"[blue]Regenerating output EPUB from completed batch to:[/blue] {output_path}")
+                            # Continue with normal processing to regenerate the EPUB
+                    else:
+                        # Just return the summary text
+                        self.console.print("[blue]Generating summary from completed batch...[/blue]")
+                        # Continue with normal processing to generate summary
+                        
             except Exception as e:
                 self.console.print(f"[red]Could not resume batch {resume_batch_id}: {e}[/red]")
                 self.console.print("[yellow]Starting new batch instead...[/yellow]")
@@ -339,6 +365,8 @@ class EpubProcessor(BaseProcessor):
                     try:
                         with open(chapter_state.output_file, encoding='utf-8') as f:
                             content = f.read()
+                        # Note: Previously processed content might be in HTML format
+                        # The format converter will handle this appropriately when creating EPUB
                         processed_chapters.append((chapter_state.chapter_title, content))
                     except Exception:
                         # If we can't load previous output, reprocess this chapter
@@ -359,11 +387,14 @@ class EpubProcessor(BaseProcessor):
                     self.batch_manager.update_chapter_status(batch_state, chapter_index, 'processing')
 
                     try:
+                        # Convert HTML to Markdown for cleaner model input
+                        markdown_content = ensure_markdown_format(content)
+                        
                         if stream:
                             self.console.print(f"\n[bold]Chapter {i}: {title}[/bold]")
-                            processed_content = self._process_with_streaming(content, model, None, title)
+                            processed_content = self._process_with_streaming(markdown_content, model, None, title)
                         else:
-                            processed_content = self._process_without_streaming(content, model, None, title)
+                            processed_content = self._process_without_streaming(markdown_content, model, None, title)
 
                         # Save chapter output for resume capability
                         if output_path:
@@ -411,6 +442,11 @@ class EpubProcessor(BaseProcessor):
                 raise FileProcessingError("Batch processing interrupted by user")
 
         if output_path:
+            # Validate processed_chapters before creating EPUB
+            if not processed_chapters:
+                raise FileProcessingError("No processed chapters available to create EPUB. This might indicate a problem with loading completed chapters from previous batch run.")
+            
+            
             # Create new epub with processed content
             output_epub_path = self._create_processed_epub(book, processed_chapters, original_path, output_path)
             self.console.print(f"\n[bold green]Processed epub saved to:[/bold green] {output_epub_path}")
@@ -442,8 +478,20 @@ class EpubProcessor(BaseProcessor):
         new_book = epub.EpubBook()
 
         # Copy metadata from original
-        new_book.set_identifier(original_book.get_metadata('DC', 'identifier')[0][0] if original_book.get_metadata('DC', 'identifier') else 'processed')
-        new_book.set_title(f"{original_book.get_metadata('DC', 'title')[0][0]} (Beta Read)" if original_book.get_metadata('DC', 'title') else 'Processed Book')
+        try:
+            identifier_metadata = original_book.get_metadata('DC', 'identifier')
+            identifier = identifier_metadata[0][0] if identifier_metadata else 'processed-book'
+            new_book.set_identifier(identifier)
+        except Exception:
+            new_book.set_identifier('processed-book')
+            
+        try:
+            title_metadata = original_book.get_metadata('DC', 'title')
+            title = f"{title_metadata[0][0]} (Beta Read)" if title_metadata else 'Processed Book'
+            new_book.set_title(title)
+        except Exception:
+            new_book.set_title('Processed Book')
+            
         new_book.set_language('en')
 
         # Copy authors
@@ -462,29 +510,91 @@ class EpubProcessor(BaseProcessor):
             # Create chapter
             chapter = epub.EpubHtml(title=title, file_name=f'chapter_{i}.xhtml', lang='en')
 
-            # Convert plain text back to HTML
-            html_content = self._text_to_html(content, title)
-            chapter.set_content(html_content)
+            # Convert processed Markdown content back to HTML for EPUB
+            html_content = ensure_html_format(content)
+            
+            # Add chapter title if not already present
+            if not html_content.startswith('<h1'):
+                html_content = f'<h1>{title}</h1>\n{html_content}'
+            
+            # Skip empty content
+            if not html_content or not html_content.strip():
+                self.console.print(f"[yellow]Warning: Empty content for chapter {i}: {title}[/yellow]")
+                continue
+                
+            # Set content directly as per ebooklib example
+            chapter.content = html_content
 
             new_book.add_item(chapter)
             spine.append(chapter)
             toc.append(chapter)
 
-        # Add navigation
+        # Add navigation - use simple TOC structure for now
         new_book.toc = toc
+            
+        # Add navigation files
         new_book.add_item(epub.EpubNcx())
         new_book.add_item(epub.EpubNav())
 
-        # Define spine
+        # Define spine - make sure it's not empty
+        if len(spine) <= 1:  # Only 'nav' in spine
+            raise FileProcessingError(f"No chapters were successfully added to EPUB spine. Expected {len(processed_chapters)} chapters.")
+        
         new_book.spine = spine
 
         # Create output directory if needed
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Write epub
-        epub.write_epub(str(output_path), new_book)
+        try:
+            epub.write_epub(str(output_path), new_book)
+        except Exception as e:
+            self.console.print(f"[red]Error writing EPUB: {e}[/red]")
+            raise
 
         return output_path
+
+    def _wrap_html_content(self, html_content: str, title: str) -> str:
+        """Wrap existing HTML content in proper XHTML structure.
+
+        Args:
+            html_content: HTML content that's already formatted.
+            title: Chapter title.
+
+        Returns:
+            Complete XHTML document.
+        """
+        import html
+        return f'''<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<title>{html.escape(title)}</title>
+</head>
+<body>
+<h1>{html.escape(title)}</h1>
+{html_content}
+</body>
+</html>'''
+
+    def _text_to_simple_html(self, text_content: str, title: str) -> str:
+        """Convert plain text to simple HTML format for EPUB chapters.
+
+        Args:
+            text_content: Plain text content.
+            title: Chapter title.
+
+        Returns:
+            Simple HTML content (not a complete document).
+        """
+        import html
+        escaped_text = html.escape(text_content)
+        
+        # Convert line breaks to paragraphs
+        paragraphs = escaped_text.split('\n\n')
+        html_paragraphs = [f'<p>{para.replace(chr(10), "<br/>")}</p>' for para in paragraphs if para.strip()]
+        
+        return f'<h1>{html.escape(title)}</h1>\n' + '\n'.join(html_paragraphs)
 
     def _text_to_html(self, text_content: str, title: str) -> str:
         """Convert plain text back to HTML format.

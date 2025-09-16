@@ -1,6 +1,7 @@
 """Epub file processor."""
 
 import re
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -299,6 +300,8 @@ class EpubProcessor(BaseProcessor):
         Returns:
             Path to output epub or summary text.
         """
+        start_time = time.time()
+
         chapters = self._extract_chapters(book)
 
         if not chapters:
@@ -381,15 +384,18 @@ class EpubProcessor(BaseProcessor):
             try:
                 for i, (title, content) in enumerate(chapters[start_chapter:], start_chapter + 1):
                     chapter_index = i - 1
-                    progress.update(task, description=f"[green]Processing chapter {i}: {title[:30]}...")
+                    progress.update(task, description=f"[green]Chapter {i}: {title[:20]}...")
 
                     # Update chapter status to processing
                     self.batch_manager.update_chapter_status(batch_state, chapter_index, 'processing')
 
+                    # Start timing for this chapter
+                    chapter_start_time = time.time()
+
                     try:
                         # Convert HTML to Markdown for cleaner model input
                         markdown_content = ensure_markdown_format(content)
-                        
+
                         if stream:
                             self.console.print(f"\n[bold]Chapter {i}: {title}[/bold]")
                             processed_content = self._process_with_streaming(markdown_content, model, None, title)
@@ -410,14 +416,24 @@ class EpubProcessor(BaseProcessor):
 
                         processed_chapters.append((title, processed_content))
 
+                        # Calculate chapter processing time
+                        chapter_end_time = time.time()
+                        chapter_duration = chapter_end_time - chapter_start_time
+                        chapter_word_count = len(processed_content.split())
+
                         # Update chapter status to completed
                         self.batch_manager.update_chapter_status(
                             batch_state,
                             chapter_index,
                             'completed',
                             output_file=chapter_output_file,
-                            word_count=len(processed_content.split())
+                            word_count=chapter_word_count
                         )
+
+                        # Report individual chapter completion with timing
+                        completed_count = len(processed_chapters)
+                        total_count = len(chapters)
+                        self.console.print(f"\n✓ [green]Chapter {i}: {title[:30]}{'...' if len(title) > 30 else ''}[/green] ([bold]{self._format_duration(chapter_duration)}[/bold]) - {completed_count}/{total_count} completed")
 
                         progress.update(task, advance=1)
 
@@ -456,15 +472,35 @@ class EpubProcessor(BaseProcessor):
             # Validate processed_chapters before creating EPUB
             if not processed_chapters:
                 raise FileProcessingError("No processed chapters available to create EPUB. This might indicate a problem with loading completed chapters from previous batch run.")
-            
-            
+
+
             # Create new epub with processed content
             output_epub_path = self._create_processed_epub(book, processed_chapters, original_path, output_path)
             self.console.print(f"\n[bold green]Processed epub saved to:[/bold green] {output_epub_path}")
+
+            # Report total processing time and batch statistics
+            end_time = time.time()
+            duration = end_time - start_time
+            total_words = sum(len(content.split()) for _, content in processed_chapters)
+            avg_time_per_chapter = duration / len(processed_chapters) if processed_chapters else 0
+
+            self.console.print(f"\n📊 [bold green]Processing completed in {self._format_duration(duration)}[/bold green]")
+            self.console.print(f"📈 Processed {len(processed_chapters)} chapters, {total_words:,} words")
+            self.console.print(f"⚡ Average: {self._format_duration(avg_time_per_chapter)} per chapter")
+
             return str(output_epub_path)
         else:
             # Return combined text
             result = "\n\n".join([f"# {title}\n\n{content}" for title, content in processed_chapters])
+
+            # Report total processing time for text output
+            end_time = time.time()
+            duration = end_time - start_time
+            total_words = sum(len(content.split()) for _, content in processed_chapters)
+
+            self.console.print(f"\n📊 [bold green]Processing completed in {self._format_duration(duration)}[/bold green]")
+            self.console.print(f"📈 Processed {len(processed_chapters)} chapters, {total_words:,} words")
+
             return result
 
     def _create_processed_epub(
@@ -870,6 +906,28 @@ class EpubProcessor(BaseProcessor):
         except KeyboardInterrupt:
             self.console.print(f"\n[yellow]Processing interrupted for {chapter_title}[/yellow]")
             raise FileProcessingError(f"Processing interrupted for {chapter_title}")
+
+    def _format_duration(self, seconds: float) -> str:
+        """Format duration in seconds to human-readable format.
+
+        Args:
+            seconds: Duration in seconds.
+
+        Returns:
+            Formatted duration string (e.g., "2m 34s", "45.2s").
+        """
+        if seconds < 60:
+            return f"{seconds:.1f}s"
+
+        minutes = int(seconds // 60)
+        remaining_seconds = seconds % 60
+
+        if minutes < 60:
+            return f"{minutes}m {remaining_seconds:.0f}s"
+
+        hours = int(minutes // 60)
+        remaining_minutes = minutes % 60
+        return f"{hours}h {remaining_minutes}m {remaining_seconds:.0f}s"
 
     def _load_system_prompt(self) -> str:
         """Load the system prompt for beta reading."""

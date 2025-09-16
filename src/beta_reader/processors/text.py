@@ -1,6 +1,7 @@
 """Text file processor."""
 
 import sys
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -65,14 +66,26 @@ class TextProcessor(BaseProcessor):
         if not self.can_process(file_path):
             raise FileProcessingError(f"Cannot process file type: {file_path.suffix}")
 
+        start_time = time.time()
+
         try:
             content = self._read_file_content(file_path)
             model_name = self._get_model(model)
 
             if stream:
-                return self._process_with_streaming(content, model_name, output_path)
+                result = self._process_with_streaming(content, model_name, output_path)
             else:
-                return self._process_without_streaming(content, model_name, output_path)
+                result = self._process_without_streaming(content, model_name, output_path)
+
+            # Report total processing time
+            end_time = time.time()
+            duration = end_time - start_time
+            word_count = len(content.split())
+
+            self.console.print(f"\n📊 [bold green]Processing completed in {self._format_duration(duration)}[/bold green]")
+            self.console.print(f"📈 Processed {word_count:,} words")
+
+            return result
 
         except Exception as e:
             if isinstance(e, FileProcessingError):
@@ -352,6 +365,28 @@ class TextProcessor(BaseProcessor):
         except KeyboardInterrupt:
             self.console.print("\n[yellow]Processing interrupted by user[/yellow]")
             raise FileProcessingError("Processing interrupted by user")
+
+    def _format_duration(self, seconds: float) -> str:
+        """Format duration in seconds to human-readable format.
+
+        Args:
+            seconds: Duration in seconds.
+
+        Returns:
+            Formatted duration string (e.g., "2m 34s", "45.2s").
+        """
+        if seconds < 60:
+            return f"{seconds:.1f}s"
+
+        minutes = int(seconds // 60)
+        remaining_seconds = seconds % 60
+
+        if minutes < 60:
+            return f"{minutes}m {remaining_seconds:.0f}s"
+
+        hours = int(minutes // 60)
+        remaining_minutes = minutes % 60
+        return f"{hours}h {remaining_minutes}m {remaining_seconds:.0f}s"
 
     def _load_system_prompt(self) -> str:
         """Load the system prompt for beta reading.

@@ -5,6 +5,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from ..core.config import Config
+from ..core.utils import format_duration, load_system_prompt, read_file_content, write_file_content
 from ..llm.client import OllamaClient
 
 
@@ -100,13 +101,7 @@ class BaseProcessor(ABC):
         Raises:
             FileProcessingError: If file cannot be read.
         """
-        from ..llm.exceptions import FileProcessingError
-
-        try:
-            with open(file_path, encoding="utf-8") as f:
-                return f.read()
-        except Exception as e:
-            raise FileProcessingError(f"Failed to read file {file_path}: {e}") from e
+        return read_file_content(file_path)
 
     def _write_file_content(self, file_path: Path, content: str) -> None:
         """Write content to a file.
@@ -118,11 +113,26 @@ class BaseProcessor(ABC):
         Raises:
             FileProcessingError: If file cannot be written.
         """
-        from ..llm.exceptions import FileProcessingError
+        return write_file_content(file_path, content)
 
-        try:
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(content)
-        except Exception as e:
-            raise FileProcessingError(f"Failed to write file {file_path}: {e}") from e
+    def _load_system_prompt(self) -> str:
+        """Load the system prompt for beta reading.
+
+        Returns:
+            System prompt content.
+
+        Raises:
+            FileProcessingError: If system prompt cannot be loaded.
+        """
+        return load_system_prompt(self.config)
+
+    def _format_duration(self, seconds: float) -> str:
+        """Format duration in seconds to human-readable format.
+
+        Args:
+            seconds: Duration in seconds.
+
+        Returns:
+            Formatted duration string (e.g., "2m 34s", "45.2s").
+        """
+        return format_duration(seconds)

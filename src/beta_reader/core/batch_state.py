@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ..llm.exceptions import FileProcessingError
+from .utils import get_safe_filename
 
 
 @dataclass
@@ -75,9 +76,9 @@ class BatchStateManager:
             Unique batch ID.
         """
         timestamp = int(time.time())
-        safe_filename = input_file.stem.replace(" ", "_").replace("-", "_")
-        safe_model = model.replace(":", "_").replace("/", "_")
-        return f"{safe_filename}_{safe_model}_{timestamp}"
+        safe_filename = get_safe_filename(input_file.stem)
+        safe_model_name = get_safe_filename(model)
+        return f"{safe_filename}_{safe_model_name}_{timestamp}"
 
     def get_short_hash(self, batch_id: str, length: int = 8) -> str:
         """Generate a short hash for a batch ID.

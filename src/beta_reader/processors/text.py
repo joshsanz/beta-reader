@@ -1,32 +1,47 @@
-"""Text file processor."""
+"""Text file processor.
 
-import sys
+This module provides processing capabilities for plain text files (.txt),
+including chunking for large files and both streaming and non-streaming modes.
+"""
+
 import time
 from collections.abc import Iterator
 from pathlib import Path
 
 from rich.console import Console
-from rich.progress import Progress
-from rich.text import Text
 
-from ..core.text_chunker import TextChunk, TextChunker
+from ..core.chunk_processor import ChunkProcessor
+from ..core.text_chunker import TextChunker
 from ..llm.exceptions import FileProcessingError
 from .base import BaseProcessor
 
 
 class TextProcessor(BaseProcessor):
-    """Processor for plain text files."""
+    """Processor for plain text files.
+
+    Handles processing of .txt files with automatic chunking for large content,
+    progress reporting, and flexible output options.
+    """
 
     def __init__(self, *args, **kwargs) -> None:
-        """Initialize text processor."""
+        """Initialize text processor.
+
+        Sets up console output, loads system prompt, configures text chunker
+        with application settings, and initializes the chunk processor.
+
+        Args:
+            *args: Positional arguments passed to BaseProcessor.
+            **kwargs: Keyword arguments passed to BaseProcessor.
+        """
         super().__init__(*args, **kwargs)
         self.console = Console()
-        self._system_prompt = self._load_system_prompt()
+        self.system_prompt = self._load_system_prompt()
         # Initialize chunker with config values
         self.chunker = TextChunker(
             target_word_count=self.config.chunking.target_word_count,
             max_word_count=self.config.chunking.max_word_count
         )
+        self.chunk_processor = ChunkProcessor(self.client, self.chunker, self.console)
 
     def can_process(self, file_path: Path) -> bool:
         """Check if this processor can handle text files.
@@ -38,6 +53,10 @@ class TextProcessor(BaseProcessor):
             True if the file has a .txt extension, False otherwise.
         """
         return file_path.suffix.lower() == ".txt"
+
+    # ========================================================================
+    # Public Processing Methods
+    # ========================================================================
 
     def process_file(
         self,
@@ -122,13 +141,17 @@ class TextProcessor(BaseProcessor):
             yield from self.client.generate_stream(
                 model=model_name,
                 prompt=f"[BEGINNING OF CONTENT]\n{content}\n[END OF CONTENT]",
-                system_prompt=self._system_prompt,
+                system_prompt=self.system_prompt,
             )
 
         except Exception as e:
             if isinstance(e, FileProcessingError):
                 raise
             raise FileProcessingError(f"Streaming failed for {file_path}: {e}") from e
+
+    # ========================================================================
+    # Private Processing Methods
+    # ========================================================================
 
     def _process_with_streaming(
         self,
@@ -148,115 +171,11 @@ class TextProcessor(BaseProcessor):
         """
         self.console.print(f"\n[bold blue]Processing with model:[/bold blue] {model}")
 
-        # Check if content needs chunking
-        word_count = len(content.split())
         debug_chunking = getattr(self, '_debug_chunking', False)
-        if word_count <= self.chunker.target_word_count:
-            return self._process_single_chunk_streaming(content, model, output_path)
-        else:
-            return self._process_chunked_content_streaming(content, model, output_path, debug_chunking)
+        return self.chunk_processor.process_content_streaming(
+            content, model, self.system_prompt, output_path, "text", debug_chunking
+        )
 
-    def _process_single_chunk_streaming(
-        self,
-        content: str,
-        model: str,
-        output_path: Path | None = None
-    ) -> str:
-        """Process content as a single chunk with streaming."""
-        self.console.print("[dim]Streaming output...[/dim]\n")
-
-        result_chunks = []
-
-        try:
-            for chunk in self.client.generate_stream(
-                model=model,
-                prompt=f"[BEGINNING OF CONTENT]\n{content}\n[END OF CONTENT]",
-                system_prompt=self._system_prompt,
-            ):
-                result_chunks.append(chunk)
-                # Stream to console with color
-                text = Text(chunk, style="green")
-                self.console.print(text, end="")
-                sys.stdout.flush()
-
-            self.console.print("\n")  # Add final newline
-
-            result = "".join(result_chunks)
-
-            if output_path:
-                self._write_file_content(output_path, result)
-                self.console.print(f"\n[bold green]Output saved to:[/bold green] {output_path}")
-
-            return result
-
-        except KeyboardInterrupt:
-            self.console.print("\n[yellow]Processing interrupted by user[/yellow]")
-            raise FileProcessingError("Processing interrupted by user")
-
-    def _process_chunked_content_streaming(
-        self,
-        content: str,
-        model: str,
-        output_path: Path | None = None,
-        debug_chunking: bool = False
-    ) -> str:
-        """Process content in chunks with streaming."""
-        chunks = self.chunker.chunk_text(content)
-
-        if not chunks:
-            return content
-
-        self.console.print(f"[blue]Chunking text: {len(chunks)} chunks ({len(content.split())} words)[/blue]")
-
-        # Show debug information about chunk boundaries
-        if debug_chunking:
-            self.console.print("\n[yellow]Chunk Boundaries Debug Information:[/yellow]")
-            boundaries = self.chunker.get_chunk_boundaries_debug(content)
-            for boundary in boundaries:
-                self.console.print(f"[dim]{boundary}[/dim]")
-            self.console.print()
-
-        processed_chunks = []
-
-        try:
-            for i, chunk in enumerate(chunks, 1):
-                self.console.print(f"\n[dim]Processing chunk {i}/{len(chunks)}...[/dim]\n")
-
-                result_parts = []
-                for stream_chunk in self.client.generate_stream(
-                    model=model,
-                    prompt=f"[BEGINNING OF CONTENT]\n{chunk.content}\n[END OF CONTENT]",
-                    system_prompt=self._system_prompt,
-                ):
-                    result_parts.append(stream_chunk)
-                    text = Text(stream_chunk, style="green")
-                    self.console.print(text, end="")
-                    sys.stdout.flush()
-
-                self.console.print("\n")  # Add final newline after chunk
-
-                chunk_result = "".join(result_parts)
-                processed_chunks.append(TextChunk(
-                    content=chunk_result,
-                    chunk_number=chunk.chunk_number,
-                    total_chunks=chunk.total_chunks,
-                    word_count=len(chunk_result.split()),
-                    start_position=chunk.start_position,
-                    end_position=chunk.end_position
-                ))
-
-            # Reassemble the processed chunks
-            result = self.chunker.reassemble_chunks(processed_chunks)
-
-            if output_path:
-                self._write_file_content(output_path, result)
-                self.console.print(f"\n[bold green]Output saved to:[/bold green] {output_path}")
-
-            return result
-
-        except KeyboardInterrupt:
-            self.console.print("\n[yellow]Processing interrupted by user[/yellow]")
-            raise FileProcessingError("Processing interrupted by user")
 
     def _process_without_streaming(
         self,
@@ -276,138 +195,9 @@ class TextProcessor(BaseProcessor):
         """
         self.console.print(f"[bold blue]Processing with model:[/bold blue] {model}")
 
-        # Check if content needs chunking
-        word_count = len(content.split())
         debug_chunking = getattr(self, '_debug_chunking', False)
-        if word_count <= self.chunker.target_word_count:
-            return self._process_single_chunk_no_streaming(content, model, output_path)
-        else:
-            return self._process_chunked_content_no_streaming(content, model, output_path, debug_chunking)
+        return self.chunk_processor.process_content_non_streaming(
+            content, model, self.system_prompt, output_path, "text", debug_chunking
+        )
 
-    def _process_single_chunk_no_streaming(
-        self,
-        content: str,
-        model: str,
-        output_path: Path | None = None
-    ) -> str:
-        """Process content as a single chunk without streaming."""
-        with self.console.status("[dim]Processing...[/dim]"):
-            result = self.client.generate(
-                model=model,
-                prompt=f"[BEGINNING OF CONTENT]\n{content}\n[END OF CONTENT]",
-                system_prompt=self._system_prompt,
-            )
 
-        if output_path:
-            self._write_file_content(output_path, result)
-            self.console.print(f"[bold green]Output saved to:[/bold green] {output_path}")
-
-        return result
-
-    def _process_chunked_content_no_streaming(
-        self,
-        content: str,
-        model: str,
-        output_path: Path | None = None,
-        debug_chunking: bool = False
-    ) -> str:
-        """Process content in chunks without streaming."""
-        chunks = self.chunker.chunk_text(content)
-
-        if not chunks:
-            return content
-
-        self.console.print(f"[blue]Chunking text: {len(chunks)} chunks ({len(content.split())} words)[/blue]")
-
-        # Show debug information about chunk boundaries
-        if debug_chunking:
-            self.console.print("\n[yellow]Chunk Boundaries Debug Information:[/yellow]")
-            boundaries = self.chunker.get_chunk_boundaries_debug(content)
-            for boundary in boundaries:
-                self.console.print(f"[dim]{boundary}[/dim]")
-            self.console.print()
-
-        processed_chunks = []
-
-        try:
-            with Progress() as progress:
-                task = progress.add_task("Processing text", total=len(chunks))
-
-                for chunk in chunks:
-                    progress.update(task, description=f"Processing chunk {chunk.chunk_number}/{chunk.total_chunks}")
-
-                    chunk_result = self.client.generate(
-                        model=model,
-                        prompt=f"[BEGINNING OF CONTENT]\n{chunk.content}\n[END OF CONTENT]",
-                        system_prompt=self._system_prompt,
-                    )
-
-                    processed_chunks.append(TextChunk(
-                        content=chunk_result,
-                        chunk_number=chunk.chunk_number,
-                        total_chunks=chunk.total_chunks,
-                        word_count=len(chunk_result.split()),
-                        start_position=chunk.start_position,
-                        end_position=chunk.end_position
-                    ))
-
-                    progress.advance(task)
-
-            # Reassemble the processed chunks
-            result = self.chunker.reassemble_chunks(processed_chunks)
-
-            if output_path:
-                self._write_file_content(output_path, result)
-                self.console.print(f"[bold green]Output saved to:[/bold green] {output_path}")
-
-            return result
-
-        except KeyboardInterrupt:
-            self.console.print("\n[yellow]Processing interrupted by user[/yellow]")
-            raise FileProcessingError("Processing interrupted by user")
-
-    def _format_duration(self, seconds: float) -> str:
-        """Format duration in seconds to human-readable format.
-
-        Args:
-            seconds: Duration in seconds.
-
-        Returns:
-            Formatted duration string (e.g., "2m 34s", "45.2s").
-        """
-        if seconds < 60:
-            return f"{seconds:.1f}s"
-
-        minutes = int(seconds // 60)
-        remaining_seconds = seconds % 60
-
-        if minutes < 60:
-            return f"{minutes}m {remaining_seconds:.0f}s"
-
-        hours = int(minutes // 60)
-        remaining_minutes = minutes % 60
-        return f"{hours}h {remaining_minutes}m {remaining_seconds:.0f}s"
-
-    def _load_system_prompt(self) -> str:
-        """Load the system prompt for beta reading.
-
-        Returns:
-            System prompt content.
-
-        Raises:
-            FileProcessingError: If system prompt cannot be loaded.
-        """
-        # Check config path first, then fall back to config method
-        config_prompt_path = Path("config") / "system_prompt.txt"
-        if config_prompt_path.exists():
-            try:
-                return self._read_file_content(config_prompt_path)
-            except Exception as e:
-                raise FileProcessingError(f"Failed to load system prompt: {e}") from e
-
-        # Fall back to config method
-        try:
-            system_prompt_path = self.config.get_system_prompt_path()
-            return self._read_file_content(system_prompt_path)
-        except Exception as e:
-            raise FileProcessingError(f"Failed to load system prompt: {e}") from e

@@ -13,6 +13,7 @@ from ..llm.client import OllamaClient
 from ..llm.exceptions import FileProcessingError
 from .performance import get_sample_warmup_text
 from .text_chunker import TextChunk, TextChunker
+from .utils import get_safe_filename
 
 
 class ModelComparison:
@@ -287,8 +288,8 @@ class ModelComparison:
     ) -> None:
         """Save model output to file."""
         output_dir.mkdir(parents=True, exist_ok=True)
-        safe_model_name = model.replace(":", "_").replace("/", "_").replace(" ", "_")
-        output_file = output_dir / f"{safe_model_name}_output.txt"
+        safe_filename = get_safe_filename(model)
+        output_file = output_dir / f"{safe_filename}_output.txt"
 
         with open(output_file, "w", encoding="utf-8") as f:
             f.write(f"# Output from model: {model}\n")
@@ -341,10 +342,10 @@ class ModelComparison:
         for model, result in results.items():
             if result["success"]:
                 status = "✓ Success"
-                time_str = f"{result['processing_time']:.2f}"
-                words_str = f"{result['word_count']:,}"
-                chars_str = f"{result['char_count']:,}"
-                wps_str = f"{result['words_per_second']:.1f}"
+                processing_time_str = f"{result['processing_time']:.2f}"
+                word_count_str = f"{result['word_count']:,}"
+                char_count_str = f"{result['char_count']:,}"
+                words_per_second_str = f"{result['words_per_second']:.1f}"
 
                 # Handle chunking info
                 if result.get("chunked"):
@@ -355,10 +356,10 @@ class ModelComparison:
                 table.add_row(
                     model,
                     f"[green]{status}[/green]",
-                    time_str,
-                    words_str,
-                    chars_str,
-                    wps_str,
+                    processing_time_str,
+                    word_count_str,
+                    char_count_str,
+                    words_per_second_str,
                     chunks_str,
                 )
             else:

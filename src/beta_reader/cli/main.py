@@ -24,6 +24,10 @@ app = typer.Typer(
 console = Console()
 
 
+# ============================================================================
+# Model and Configuration Commands
+# ============================================================================
+
 @app.command()
 def models() -> None:
     """List available Ollama models."""
@@ -76,8 +80,8 @@ def config_show() -> None:
         table.add_row("Chunk Max Size", f"{config.chunking.max_word_count} words")
 
         # Add system prompt path
-        system_prompt_path = config.get_system_prompt_path()
-        table.add_row("System Prompt Path", str(system_prompt_path))
+        prompt_path = config.get_system_prompt_path()
+        table.add_row("System Prompt Path", str(prompt_path))
 
         console.print(table)
 
@@ -120,18 +124,18 @@ def system_prompt() -> None:
     """Show the current system prompt used for processing."""
     try:
         config = Config.load_from_file()
-        system_prompt_path = config.get_system_prompt_path()
+        prompt_path = config.get_system_prompt_path()
 
-        if not system_prompt_path.exists():
-            print(f"[red]Error: System prompt file not found: {system_prompt_path}[/red]")
+        if not prompt_path.exists():
+            print(f"[red]Error: System prompt file not found: {prompt_path}[/red]")
             raise typer.Exit(1)
 
-        console.print(f"\n[bold blue]System Prompt Location:[/bold blue] {system_prompt_path}")
-        console.print(f"[bold blue]File size:[/bold blue] {system_prompt_path.stat().st_size:,} bytes")
+        console.print(f"\n[bold blue]System Prompt Location:[/bold blue] {prompt_path}")
+        console.print(f"[bold blue]File size:[/bold blue] {prompt_path.stat().st_size:,} bytes")
         console.print("\n[bold blue]System Prompt Content:[/bold blue]")
         console.print("─" * 80)
 
-        with open(system_prompt_path, encoding="utf-8") as f:
+        with open(prompt_path, encoding="utf-8") as f:
             content = f.read()
 
         # Display the prompt with syntax highlighting for readability
@@ -145,6 +149,10 @@ def system_prompt() -> None:
         print(f"[red]Error reading system prompt: {e}[/red]")
         raise typer.Exit(1)
 
+
+# ============================================================================
+# File Processing Commands
+# ============================================================================
 
 @app.command()
 def process(
@@ -169,13 +177,14 @@ def process(
             raise typer.Exit(1)
 
         # Create appropriate processor
-        processor = None
-        if input_file.suffix.lower() == ".txt":
+        file_type = input_file.suffix.lower()
+
+        if file_type == ".txt":
             if chapter is not None or batch:
                 print("[red]Error: --chapter and --batch options are only for epub files[/red]")
                 raise typer.Exit(1)
             processor = TextProcessor(client, config)
-        elif input_file.suffix.lower() == ".epub":
+        elif file_type == ".epub":
             processor = EpubProcessor(client, config)
         else:
             print(f"[red]Error: Unsupported file type: {input_file.suffix}[/red]")
@@ -183,8 +192,7 @@ def process(
             raise typer.Exit(1)
 
         # Set debug chunking flag
-        if processor:
-            processor._debug_chunking = debug_chunking
+        processor._debug_chunking = debug_chunking
 
         # Validate model if specified
         if model and not client.model_exists(model):
@@ -225,6 +233,10 @@ def process(
         raise typer.Exit(130)
 
 
+# ============================================================================
+# Diff and Comparison Commands
+# ============================================================================
+
 @app.command()
 def diff(
     original: Path = typer.Argument(..., help="Original file"),
@@ -240,13 +252,10 @@ def diff(
             raise typer.Exit(1)
 
         # Check if files exist
-        if not original.exists():
-            print(f"[red]Error: Original file not found: {original}[/red]")
-            raise typer.Exit(1)
-
-        if not edited.exists():
-            print(f"[red]Error: Edited file not found: {edited}[/red]")
-            raise typer.Exit(1)
+        for file_path, file_type in [(original, "Original"), (edited, "Edited")]:
+            if not file_path.exists():
+                print(f"[red]Error: {file_type} file not found: {file_path}[/red]")
+                raise typer.Exit(1)
 
         # Validate file types match
         if original.suffix.lower() != edited.suffix.lower():
@@ -254,14 +263,15 @@ def diff(
             raise typer.Exit(1)
 
         # Create appropriate differ
-        if original.suffix.lower() == ".epub":
-            differ = EpubDiffer()
-        elif original.suffix.lower() == ".txt":
-            differ = TextDiffer()
-        else:
+        file_type = original.suffix.lower()
+        differ_map = {".epub": EpubDiffer, ".txt": TextDiffer}
+
+        if file_type not in differ_map:
             print(f"[red]Error: Unsupported file type: {original.suffix}[/red]")
             print("[dim]Currently supported: .txt, .epub[/dim]")
             raise typer.Exit(1)
+
+        differ = differ_map[file_type]()
 
         if output:
             # Save diff to file
@@ -344,23 +354,24 @@ def compare(
             raise typer.Exit(1)
 
         # Load system prompt
-        system_prompt_path = config.get_system_prompt_path()
-        if not system_prompt_path.exists():
-            print(f"[red]Error: System prompt not found: {system_prompt_path}[/red]")
+        prompt_path = config.get_system_prompt_path()
+        if not prompt_path.exists():
+            print(f"[red]Error: System prompt not found: {prompt_path}[/red]")
             raise typer.Exit(1)
 
-        with open(system_prompt_path, encoding="utf-8") as f:
+        with open(prompt_path, encoding="utf-8") as f:
             system_prompt = f.read()
 
         # Extract text based on file type
-        input_text = ""
-        if input_file.suffix.lower() == ".txt":
+        file_type = input_file.suffix.lower()
+
+        if file_type == ".txt":
             if chapter is not None:
                 print("[red]Error: --chapter option is only for epub files[/red]")
                 raise typer.Exit(1)
             with open(input_file, encoding="utf-8") as f:
                 input_text = f.read()
-        elif input_file.suffix.lower() == ".epub":
+        elif file_type == ".epub":
             # Load epub and extract chapters
             from ebooklib import epub
             book = epub.read_epub(str(input_file))
@@ -445,6 +456,10 @@ def compare(
         print("\n[yellow]Comparison interrupted by user[/yellow]")
         raise typer.Exit(130)
 
+
+# ============================================================================
+# Batch Processing Commands
+# ============================================================================
 
 @app.command(name="batch-list")
 def batch_list() -> None:
@@ -606,6 +621,10 @@ def batch_status(
         print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
 
+
+# ============================================================================
+# Main Entry Point
+# ============================================================================
 
 def main() -> None:
     """Entry point for the CLI application."""

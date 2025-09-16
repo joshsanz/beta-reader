@@ -6,6 +6,10 @@ import yaml
 from pydantic import BaseModel, Field, field_validator
 
 
+# ============================================================================
+# Configuration Data Models
+# ============================================================================
+
 class ModelSpecificConfig(BaseModel):
     """Configuration for a specific model."""
 
@@ -91,6 +95,10 @@ class Config(BaseModel):
     diff: DiffConfig = Field(default_factory=DiffConfig)
     chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
 
+    # ========================================================================
+    # Configuration Loading and Management
+    # ========================================================================
+
     @classmethod
     def load_from_file(cls, config_path: Path | None = None) -> "Config":
         """Load configuration from YAML file.
@@ -149,6 +157,10 @@ class Config(BaseModel):
                 indent=2,
                 sort_keys=False
             )
+
+    # ========================================================================
+    # Model and System Configuration Helpers
+    # ========================================================================
 
     def get_system_prompt_path(self) -> Path:
         """Get path to system prompt file.

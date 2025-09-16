@@ -24,7 +24,7 @@ class EpubProcessor(BaseProcessor):
         """Initialize epub processor."""
         super().__init__(*args, **kwargs)
         self.console = Console()
-        self._system_prompt = self._load_system_prompt()
+        self.system_prompt = self._load_system_prompt()
         self.batch_manager = BatchStateManager()
         # Initialize chunker with config values
         self.chunker = TextChunker(
@@ -42,6 +42,10 @@ class EpubProcessor(BaseProcessor):
             True if the file has an .epub extension, False otherwise.
         """
         return file_path.suffix.lower() == ".epub"
+
+    # ========================================================================
+    # Public Processing Methods
+    # ========================================================================
 
     def process_file(
         self,
@@ -139,13 +143,17 @@ class EpubProcessor(BaseProcessor):
             yield from self.client.generate_stream(
                 model=model_name,
                 prompt=f"[BEGINNING OF CONTENT]\n{chapter_content}\n[END OF CONTENT]",
-                system_prompt=self._system_prompt,
+                system_prompt=self.system_prompt,
             )
 
         except Exception as e:
             if isinstance(e, FileProcessingError):
                 raise
             raise FileProcessingError(f"Streaming failed for {file_path}: {e}") from e
+
+    # ========================================================================
+    # Chapter Extraction and Content Processing
+    # ========================================================================
 
     def _extract_chapters(self, book: epub.EpubBook) -> list[tuple[str, str]]:
         """Extract chapters from epub book.
@@ -244,6 +252,10 @@ class EpubProcessor(BaseProcessor):
             title_display = title[:50] + "..." if len(title) > 50 else title
             self.console.print(f"  {i:2d}. [cyan]{title_display}[/cyan] ({word_count:,} words)")
 
+    # ========================================================================
+    # Single Chapter Processing
+    # ========================================================================
+
     def _process_single_chapter(
         self,
         book: epub.EpubBook,
@@ -277,6 +289,10 @@ class EpubProcessor(BaseProcessor):
             return self._process_with_streaming(chapter_content, model, output_path, chapter_title)
         else:
             return self._process_without_streaming(chapter_content, model, output_path, chapter_title)
+
+    # ========================================================================
+    # Batch Processing
+    # ========================================================================
 
     def _process_batch(
         self,
@@ -404,9 +420,9 @@ class EpubProcessor(BaseProcessor):
 
                         # Save chapter output for resume capability
                         if output_path:
-                            chapter_output_dir = output_path.parent / f".{output_path.stem}_chapters"
-                            chapter_output_dir.mkdir(exist_ok=True)
-                            chapter_file = chapter_output_dir / f"chapter_{i:03d}_{title[:50].replace('/', '_')}.txt"
+                            output_dir = output_path.parent / f".{output_path.stem}_chapters"
+                            output_dir.mkdir(exist_ok=True)
+                            chapter_file = output_dir / f"chapter_{i:03d}_{title[:50].replace('/', '_')}.txt"
                             with open(chapter_file, 'w', encoding='utf-8') as f:
                                 f.write(processed_content)
 
@@ -502,6 +518,10 @@ class EpubProcessor(BaseProcessor):
             self.console.print(f"📈 Processed {len(processed_chapters)} chapters, {total_words:,} words")
 
             return result
+
+    # ========================================================================
+    # EPUB Creation and File Utilities
+    # ========================================================================
 
     def _create_processed_epub(
         self,
@@ -708,7 +728,7 @@ class EpubProcessor(BaseProcessor):
             for chunk in self.client.generate_stream(
                 model=model,
                 prompt=f"[BEGINNING OF CONTENT]\n{content}\n[END OF CONTENT]",
-                system_prompt=self._system_prompt,
+                system_prompt=self.system_prompt,
             ):
                 result_chunks.append(chunk)
                 if not output_path:  # Only stream to console if not saving to file
@@ -771,7 +791,7 @@ class EpubProcessor(BaseProcessor):
                 for stream_chunk in self.client.generate_stream(
                     model=model,
                     prompt=f"[BEGINNING OF CONTENT]\n{chunk.content}\n[END OF CONTENT]",
-                    system_prompt=self._system_prompt,
+                    system_prompt=self.system_prompt,
                 ):
                     result_parts.append(stream_chunk)
                     if not output_path:  # Only stream to console if not saving to file
@@ -835,7 +855,7 @@ class EpubProcessor(BaseProcessor):
             result = self.client.generate(
                 model=model,
                 prompt=f"[BEGINNING OF CONTENT]\n{content}\n[END OF CONTENT]",
-                system_prompt=self._system_prompt,
+                system_prompt=self.system_prompt,
             )
 
         if output_path:
@@ -880,7 +900,7 @@ class EpubProcessor(BaseProcessor):
                     chunk_result = self.client.generate(
                         model=model,
                         prompt=f"[BEGINNING OF CONTENT]\n{chunk.content}\n[END OF CONTENT]",
-                        system_prompt=self._system_prompt,
+                        system_prompt=self.system_prompt,
                     )
 
                     processed_chunks.append(TextChunk(
@@ -907,41 +927,3 @@ class EpubProcessor(BaseProcessor):
             self.console.print(f"\n[yellow]Processing interrupted for {chapter_title}[/yellow]")
             raise FileProcessingError(f"Processing interrupted for {chapter_title}")
 
-    def _format_duration(self, seconds: float) -> str:
-        """Format duration in seconds to human-readable format.
-
-        Args:
-            seconds: Duration in seconds.
-
-        Returns:
-            Formatted duration string (e.g., "2m 34s", "45.2s").
-        """
-        if seconds < 60:
-            return f"{seconds:.1f}s"
-
-        minutes = int(seconds // 60)
-        remaining_seconds = seconds % 60
-
-        if minutes < 60:
-            return f"{minutes}m {remaining_seconds:.0f}s"
-
-        hours = int(minutes // 60)
-        remaining_minutes = minutes % 60
-        return f"{hours}h {remaining_minutes}m {remaining_seconds:.0f}s"
-
-    def _load_system_prompt(self) -> str:
-        """Load the system prompt for beta reading."""
-        # Check config path first, then fall back to config method
-        config_prompt_path = Path("config") / "system_prompt.txt"
-        if config_prompt_path.exists():
-            try:
-                return self._read_file_content(config_prompt_path)
-            except Exception as e:
-                raise FileProcessingError(f"Failed to load system prompt: {e}") from e
-
-        # Fall back to config method
-        try:
-            system_prompt_path = self.config.get_system_prompt_path()
-            return self._read_file_content(system_prompt_path)
-        except Exception as e:
-            raise FileProcessingError(f"Failed to load system prompt: {e}") from e

@@ -314,17 +314,17 @@ class EpubProcessor(BaseProcessor):
                 self.console.print(f"\n[yellow]Resuming batch processing:[/yellow] {short_hash}")
                 self.console.print(f"[dim]Full ID: {full_batch_id}[/dim]")
                 self.console.print(f"[dim]Progress: {batch_state.completed_chapters}/{batch_state.total_chapters} chapters completed[/dim]")
-                
+
                 # Check if batch is already completed
                 if batch_state.status == 'completed' and batch_state.completed_chapters == batch_state.total_chapters:
                     self.console.print(f"\n[green]Batch {short_hash} is already completed![/green]")
-                    
+
                     if output_path:
                         # Check if the requested output file already exists
                         if output_path.exists():
                             self.console.print(f"[green]Requested output file already exists:[/green] {output_path}")
                             return str(output_path)
-                        
+
                         # Check if original output file exists and user wants same path
                         original_output = Path(batch_state.output_directory) if batch_state.output_directory else None
                         if original_output and original_output == output_path and original_output.exists():
@@ -338,7 +338,7 @@ class EpubProcessor(BaseProcessor):
                         # Just return the summary text
                         self.console.print("[blue]Generating summary from completed batch...[/blue]")
                         # Continue with normal processing to generate summary
-                        
+
             except Exception as e:
                 self.console.print(f"[red]Could not resume batch {resume_batch_id}: {e}[/red]")
                 self.console.print("[yellow]Starting new batch instead...[/yellow]")
@@ -422,6 +422,17 @@ class EpubProcessor(BaseProcessor):
                         progress.update(task, advance=1)
 
                     except Exception as e:
+                        # Check if this was an interruption - if so, re-raise as KeyboardInterrupt
+                        if isinstance(e, FileProcessingError) and "interrupted" in str(e):
+                            # Mark chapter as paused and re-raise for batch handling
+                            self.batch_manager.update_chapter_status(
+                                batch_state,
+                                chapter_index,
+                                'paused',
+                                error_message=str(e)
+                            )
+                            raise KeyboardInterrupt()
+
                         # Mark chapter as failed but continue with others
                         self.batch_manager.update_chapter_status(
                             batch_state,
@@ -484,14 +495,14 @@ class EpubProcessor(BaseProcessor):
             new_book.set_identifier(identifier)
         except Exception:
             new_book.set_identifier('processed-book')
-            
+
         try:
             title_metadata = original_book.get_metadata('DC', 'title')
             title = f"{title_metadata[0][0]} (Beta Read)" if title_metadata else 'Processed Book'
             new_book.set_title(title)
         except Exception:
             new_book.set_title('Processed Book')
-            
+
         new_book.set_language('en')
 
         # Copy authors
@@ -512,16 +523,16 @@ class EpubProcessor(BaseProcessor):
 
             # Convert processed Markdown content back to HTML for EPUB
             html_content = ensure_html_format(content)
-            
+
             # Add chapter title if not already present
             if not html_content.startswith('<h1'):
                 html_content = f'<h1>{title}</h1>\n{html_content}'
-            
+
             # Skip empty content
             if not html_content or not html_content.strip():
                 self.console.print(f"[yellow]Warning: Empty content for chapter {i}: {title}[/yellow]")
                 continue
-                
+
             # Set content directly as per ebooklib example
             chapter.content = html_content
 
@@ -531,7 +542,7 @@ class EpubProcessor(BaseProcessor):
 
         # Add navigation - use simple TOC structure for now
         new_book.toc = toc
-            
+
         # Add navigation files
         new_book.add_item(epub.EpubNcx())
         new_book.add_item(epub.EpubNav())
@@ -539,7 +550,7 @@ class EpubProcessor(BaseProcessor):
         # Define spine - make sure it's not empty
         if len(spine) <= 1:  # Only 'nav' in spine
             raise FileProcessingError(f"No chapters were successfully added to EPUB spine. Expected {len(processed_chapters)} chapters.")
-        
+
         new_book.spine = spine
 
         # Create output directory if needed
@@ -589,11 +600,11 @@ class EpubProcessor(BaseProcessor):
         """
         import html
         escaped_text = html.escape(text_content)
-        
+
         # Convert line breaks to paragraphs
         paragraphs = escaped_text.split('\n\n')
         html_paragraphs = [f'<p>{para.replace(chr(10), "<br/>")}</p>' for para in paragraphs if para.strip()]
-        
+
         return f'<h1>{html.escape(title)}</h1>\n' + '\n'.join(html_paragraphs)
 
     def _text_to_html(self, text_content: str, title: str) -> str:

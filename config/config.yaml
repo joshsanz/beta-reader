@@ -1,6 +1,6 @@
 ollama:
   base_url: "http://localhost:11434"
-  default_model: "mistral-nemo:12b-instruct-2407-q4_K_M"
+  default_model: "gemma3-4b-gec:q8_0"
   timeout: 60
   # Model-specific configurations
   model_configs:
@@ -37,5 +37,5 @@ diff:
   default_format: "unified"  # or "split"
 
 chunking:
-  target_word_count: 500  # Target words per chunk (50-2000)
-  max_word_count: 750     # Maximum words before forced split (100-3000)
+  target_word_count: 250  # Target words per chunk (50-2000)
+  max_word_count: 350     # Maximum words before forced split (100-3000)

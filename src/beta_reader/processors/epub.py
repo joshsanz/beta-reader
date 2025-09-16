@@ -137,7 +137,7 @@ class EpubProcessor(BaseProcessor):
 
             yield from self.client.generate_stream(
                 model=model_name,
-                prompt=chapter_content,
+                prompt=f"[BEGINNING OF CONTENT]\n{chapter_content}\n[END OF CONTENT]",
                 system_prompt=self._system_prompt,
             )
 
@@ -660,7 +660,7 @@ class EpubProcessor(BaseProcessor):
         try:
             for chunk in self.client.generate_stream(
                 model=model,
-                prompt=content,
+                prompt=f"[BEGINNING OF CONTENT]\n{content}\n[END OF CONTENT]",
                 system_prompt=self._system_prompt,
             ):
                 result_chunks.append(chunk)
@@ -723,7 +723,7 @@ class EpubProcessor(BaseProcessor):
                 result_parts = []
                 for stream_chunk in self.client.generate_stream(
                     model=model,
-                    prompt=chunk.content,
+                    prompt=f"[BEGINNING OF CONTENT]\n{chunk.content}\n[END OF CONTENT]",
                     system_prompt=self._system_prompt,
                 ):
                     result_parts.append(stream_chunk)
@@ -787,7 +787,7 @@ class EpubProcessor(BaseProcessor):
         with self.console.status(f"[dim]Processing {chapter_title}...[/dim]"):
             result = self.client.generate(
                 model=model,
-                prompt=content,
+                prompt=f"[BEGINNING OF CONTENT]\n{content}\n[END OF CONTENT]",
                 system_prompt=self._system_prompt,
             )
 
@@ -832,7 +832,7 @@ class EpubProcessor(BaseProcessor):
 
                     chunk_result = self.client.generate(
                         model=model,
-                        prompt=chunk.content,
+                        prompt=f"[BEGINNING OF CONTENT]\n{chunk.content}\n[END OF CONTENT]",
                         system_prompt=self._system_prompt,
                     )
 

@@ -97,6 +97,12 @@ class OllamaClient:
             "repeat_penalty": 1.1,
         }
 
+        # Set max_tokens to 2x maximum chunk size to prevent endless repeats
+        # Use typical ratio of ~1.3 tokens per word
+        if self.full_config:
+            max_chunk_words = self.full_config.chunking.max_word_count
+            options["num_predict"] = int(max_chunk_words * 2 * 1.3)
+
         # Override with model-specific settings if available
         if self.full_config:
             model_config = self.full_config.get_model_config(model)
@@ -107,6 +113,8 @@ class OllamaClient:
                 options["top_p"] = model_config.top_p
             if model_config.top_k is not None:
                 options["top_k"] = model_config.top_k
+            if model_config.max_tokens is not None:
+                options["num_predict"] = model_config.max_tokens
 
         return options
 
@@ -229,11 +237,7 @@ class OllamaClient:
                 prompt=prompt,
                 system=system_prompt,
                 stream=False,
-                options={
-                    "temperature": 0.1,  # Low temperature for consistency
-                    "top_p": 0.9,
-                    "repeat_penalty": 1.1,
-                }
+                options=self._get_model_options(model),
             )
             return response["response"]
         except ollama.RequestError as e:
@@ -270,11 +274,7 @@ class OllamaClient:
                 prompt=prompt,
                 system=system_prompt,
                 stream=True,
-                options={
-                    "temperature": 0.1,  # Low temperature for consistency
-                    "top_p": 0.9,
-                    "repeat_penalty": 1.1,
-                }
+                options=self._get_model_options(model),
             )
 
             async for chunk in response_stream:

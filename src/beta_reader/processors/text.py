@@ -108,7 +108,7 @@ class TextProcessor(BaseProcessor):
 
             yield from self.client.generate_stream(
                 model=model_name,
-                prompt=content,
+                prompt=f"[BEGINNING OF CONTENT]\n{content}\n[END OF CONTENT]",
                 system_prompt=self._system_prompt,
             )
 
@@ -157,7 +157,7 @@ class TextProcessor(BaseProcessor):
         try:
             for chunk in self.client.generate_stream(
                 model=model,
-                prompt=content,
+                prompt=f"[BEGINNING OF CONTENT]\n{content}\n[END OF CONTENT]",
                 system_prompt=self._system_prompt,
             ):
                 result_chunks.append(chunk)
@@ -212,7 +212,7 @@ class TextProcessor(BaseProcessor):
                 result_parts = []
                 for stream_chunk in self.client.generate_stream(
                     model=model,
-                    prompt=chunk.content,
+                    prompt=f"[BEGINNING OF CONTENT]\n{chunk.content}\n[END OF CONTENT]",
                     system_prompt=self._system_prompt,
                 ):
                     result_parts.append(stream_chunk)
@@ -281,7 +281,7 @@ class TextProcessor(BaseProcessor):
         with self.console.status("[dim]Processing...[/dim]"):
             result = self.client.generate(
                 model=model,
-                prompt=content,
+                prompt=f"[BEGINNING OF CONTENT]\n{content}\n[END OF CONTENT]",
                 system_prompt=self._system_prompt,
             )
 
@@ -325,7 +325,7 @@ class TextProcessor(BaseProcessor):
 
                     chunk_result = self.client.generate(
                         model=model,
-                        prompt=chunk.content,
+                        prompt=f"[BEGINNING OF CONTENT]\n{chunk.content}\n[END OF CONTENT]",
                         system_prompt=self._system_prompt,
                     )
 
